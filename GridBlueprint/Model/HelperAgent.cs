@@ -6,6 +6,8 @@ namespace GridBlueprint.Model;
 
 public class HelperAgent : IAgent<GridLayer>, IPositionable
 {
+    private GridLayer _layer;
+
     public void Init(GridLayer layer)
     {
         _layer = layer;
@@ -20,5 +22,4 @@ public class HelperAgent : IAgent<GridLayer>, IPositionable
 
     public Guid ID { get; set; }
     public Position Position { get; set; }
-    private GridLayer _layer;
 }

@@ -15,8 +15,10 @@ public class GridLayer : RasterLayer
     /// <summary>
     ///     The initialization method of the GridLayer which spawns and stores the specified number of each agent type
     /// </summary>
-    /// <param name="layerInitData"> Initialization data that is passed to an agent manager which spawns the specified
-    /// number of each agent type</param>
+    /// <param name="layerInitData">
+    ///     Initialization data that is passed to an agent manager which spawns the specified
+    ///     number of each agent type
+    /// </param>
     /// <param name="registerAgentHandle">A handle for registering agents</param>
     /// <param name="unregisterAgentHandle">A handle for unregistering agents</param>
     /// <returns>A boolean that states if initialization was successful</returns>
@@ -47,7 +49,10 @@ public class GridLayer : RasterLayer
     /// <param name="x">x-coordinate of grid cell</param>
     /// <param name="y">y-coordinate of grid cell</param>
     /// <returns>Boolean representing if (x,y) is accessible</returns>
-    public override bool IsRoutable(int x, int y) => this[x, y] == 0;
+    public override bool IsRoutable(int x, int y)
+    {
+        return this[x, y] == 0;
+    }
 
     #endregion
 

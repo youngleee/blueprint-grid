@@ -23,7 +23,7 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     {
         _layer = layer;
         Position = new Position(StartX, StartY);
-        _state = AgentState.MoveTowardsGoal;  // Initial state of the agent. Is overwritten eventually in Tick()
+        _state = AgentState.MoveTowardsGoal; // Initial state of the agent. Is overwritten eventually in Tick()
         _directions = CreateMovementDirectionsList();
         _layer.ComplexAgentEnvironment.Insert(this);
     }
@@ -41,28 +41,16 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     {
         // Chooses random state if trip is no longer in progress. Comment this out if the agent should keep its initial state.
         _state = RandomlySelectNewState();
-        
+
         if (_state == AgentState.MoveRandomly)
-        {
             MoveRandomly();
-        }
         else if (_state == AgentState.MoveWithBearing)
-        {
             MoveWithBearing();
-        }
         else if (_state == AgentState.MoveTowardsGoal)
-        {
             MoveTowardsGoal();
-        }
-        else if (_state == AgentState.ExploreAgents)
-        {
-            ExploreAgents();
-        }
-        
-        if (_layer.GetCurrentTick() == 595)
-        {
-            RemoveFromSimulation();
-        }
+        else if (_state == AgentState.ExploreAgents) ExploreAgents();
+
+        if (_layer.GetCurrentTick() == 595) RemoveFromSimulation();
     }
 
     #endregion
@@ -87,7 +75,7 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
             MovementDirections.Northwest
         };
     }
-    
+
     /// <summary>
     ///     Performs one random move, if possible, using the movement directions list.
     /// </summary>
@@ -96,7 +84,7 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
         var nextDirection = _directions[_random.Next(_directions.Count)];
         var newX = Position.X + nextDirection.X;
         var newY = Position.Y + nextDirection.Y;
-        
+
         // Check if chosen move is within the bounds of the grid
         if (0 <= newX && newX < _layer.Width && 0 <= newY && newY < _layer.Height)
         {
@@ -146,7 +134,7 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
             _path = _layer.FindPath(Position, _goal).GetEnumerator();
             _tripInProgress = true;
         }
-        
+
         if (_path.MoveNext())
         {
             _layer.ComplexAgentEnvironment.MoveTo(this, _path.Current, 1);
@@ -165,19 +153,16 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     /// <returns>The found grid cell</returns>
     private Position FindRoutableGoal(double maxDistanceToGoal = 1.0)
     {
-        var nearbyRoutableCells = _layer.Explore(Position, radius: maxDistanceToGoal, predicate: cellValue => cellValue == 0.0).ToList();
+        var nearbyRoutableCells = _layer.Explore(Position, maxDistanceToGoal, predicate: cellValue => cellValue == 0.0)
+            .ToList();
         var goal = nearbyRoutableCells[_random.Next(nearbyRoutableCells.Count)].Node.NodePosition;
 
         // in case only one cell is routable, use directly no need to random!
         // other vise, try to find a cell we are not coming from
         if (nearbyRoutableCells.Count > 1)
-        {
             while (Position.Equals(goal))
-            {
                 goal = nearbyRoutableCells[_random.Next(nearbyRoutableCells.Count)].Node.NodePosition;
-            }
-        }
-        
+
         Console.WriteLine($"New goal: {goal}");
         return goal;
     }
@@ -188,15 +173,12 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     private void ExploreAgents()
     {
         // Explore nearby other SimpleAgent instances
-        var agents = _layer.SimpleAgentEnvironment.Explore(Position, radius: AgentExploreRadius);
+        var agents = _layer.SimpleAgentEnvironment.Explore(Position, AgentExploreRadius);
 
         foreach (var agent in agents)
-        {
-            if (Distance.Chebyshev(new []{Position.X, Position.Y}, new []{agent.Position.X, agent.Position.Y}) <= 1.0)
-            {
+            if (Distance.Chebyshev(new[] { Position.X, Position.Y }, new[] { agent.Position.X, agent.Position.Y }) <=
+                1.0)
                 agent.IncrementCounter();
-            }
-        }
     }
 
     /// <summary>
@@ -213,7 +195,7 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
         }
 
         var agentStates = Enum.GetValues(typeof(AgentState));
-        var newState = (AgentState) agentStates.GetValue(_random.Next(agentStates.Length))!;
+        var newState = (AgentState)agentStates.GetValue(_random.Next(agentStates.Length))!;
         Console.WriteLine($"New state: {newState}");
         return newState;
     }
@@ -233,23 +215,21 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     #region Fields and Properties
 
     public Guid ID { get; set; }
-    
+
     public Position Position { get; set; }
 
-    [PropertyDescription(Name = "StartX")]
-    public int StartX { get; set; }
-    
-    [PropertyDescription(Name = "StartY")]
-    public int StartY { get; set; }
-    
+    [PropertyDescription(Name = "StartX")] public int StartX { get; set; }
+
+    [PropertyDescription(Name = "StartY")] public int StartY { get; set; }
+
     [PropertyDescription(Name = "MaxTripDistance")]
     public double MaxTripDistance { get; set; }
-    
+
     [PropertyDescription(Name = "AgentExploreRadius")]
     public double AgentExploreRadius { get; set; }
-    
+
     public UnregisterAgent UnregisterAgentHandle { get; set; }
-    
+
     private GridLayer _layer;
     private List<Position> _directions;
     private readonly Random _random = new();

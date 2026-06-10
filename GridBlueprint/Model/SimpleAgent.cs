@@ -37,17 +37,14 @@ public class SimpleAgent : IAgent<GridLayer>, IPositionable
     public void Tick()
     {
         MoveRandomly();
-        
-        if (_layer.GetCurrentTick() == 595)
-        {
-            RemoveFromSimulation();
-        }
+
+        if (_layer.GetCurrentTick() == 595) RemoveFromSimulation();
     }
 
     #endregion
 
     #region Methods
-    
+
     /// <summary>
     ///     Generates a list of eight movement directions that the agent uses for random movement.
     /// </summary>
@@ -66,7 +63,7 @@ public class SimpleAgent : IAgent<GridLayer>, IPositionable
             MovementDirections.Northwest
         };
     }
-    
+
     /// <summary>
     ///     Removes this agent from the simulation and, by extension, from the visualization.
     /// </summary>
@@ -120,19 +117,17 @@ public class SimpleAgent : IAgent<GridLayer>, IPositionable
     #region Fields and Properties
 
     public Guid ID { get; set; }
-    
+
     public Position Position { get; set; }
-    
-    [PropertyDescription(Name = "StartX")]
-    public int StartX { get; set; }
-    
-    [PropertyDescription(Name = "StartY")]
-    public int StartY { get; set; }
+
+    [PropertyDescription(Name = "StartX")] public int StartX { get; set; }
+
+    [PropertyDescription(Name = "StartY")] public int StartY { get; set; }
 
     public int MeetingCounter { get; private set; }
 
     public UnregisterAgent UnregisterAgentHandle { get; set; }
-    
+
     private GridLayer _layer;
     private List<Position> _directions;
     private readonly Random _random = new();

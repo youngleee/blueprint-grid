@@ -26,7 +26,7 @@ internal static class Program
 
         // Run the simulation
         var handle = starter.Run();
-        
+
         // Close the program
         Console.WriteLine("Successfully executed iterations: " + handle.Iterations);
         starter.Dispose();
