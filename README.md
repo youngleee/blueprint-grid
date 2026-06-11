@@ -22,8 +22,8 @@ The model consists of the following agent types and layer types:
 - Layer types:
   - `GridLayer`: the layer on which the agents live and move.
 - Other classes:
-  - `MovementDirection`: an enumeration of eight movement directions. Each movement changes an agent's position by one unit (grid cell) in the horizontal direction and/or vertical direction.
-  - `AgentState`: an enumeration that contains a set of agent states that guide agent behavior.
+   - `MovementDirections`: a static helper class exposing eight movement directions as `Position` constants. Each direction changes an agent's position by one unit horizontally and/or vertically.
+   - `AgentState`: an enumeration of agent states that guide agent behavior (`MoveRandomly`, `MoveWithBearing`, `MoveTowardsGoal`, `ExploreAgents`).
 
 ## Model configuration
 
@@ -37,15 +37,16 @@ The model can be configured via a JavaScript Object Notation (JSON) file called 
 - `agents`: the agent types that should be included in the simulation
   - The number of agents can be changed here by updating the value of the `count` key of each agent type.
 
-For more detailed information on configuration parameters, please view the MARS documentation [here](https://mars.haw-hamburg.de/articles/core/model-configuration/index.html).
+For more detailed information on configuration parameters, see the [MARS documentation](https://www.mars-group.org/docs/tutorial/configuration/sim_config_options/).
 
 ## Model setup and execution
 
 The following tools are required on your machine to run a full simulation and visualization of this model:
 
-- A C# Interactive Development Environment (IDE), preferably [JetBrains Rider](https://www.jetbrains.com/rider/)
-- [.NET Core](https://dotnet.microsoft.com/en-us/download) 8.0 or higher
-- [Python](https://www.python.org/downloads/) 3.8 or higher
+- A C# IDE, preferably JetBrains Rider
+- .NET SDK **10.0** or higher (pinned via `global.json`)
+- Python 3.8 or higher (note: `Visualization/requirements.txt` pins older `pygame`/`websocket-client`; on newer Python you may need to relax those pins)
+
 
 To set up and run the simulation and visualization, please follow these steps:
 
@@ -62,10 +63,21 @@ To set up and run the simulation and visualization, please follow these steps:
     4. A black PyGame window should open. **Note:** Do not close the terminal.
     5. Alternatively to the above, the visualization tool can be started with a Python IDE such as [JetBrains PyCharm](https://www.jetbrains.com/pycharm/).
 4. Open JetBrains Rider.
-5. Open the solution file `WorkshopGrid/WorkshopGrid.sln`.
-6. Run the `Main()` method in the file `Program.cs`.
+5. Open the solution file `GridBlueprint.sln`.
+6. Run the `Main()` method in `GridBlueprint/Program.cs`. The model loads its configuration from `config.json` (external JSON), not from code.
 7. The simulation should run in Rider and, simultaneously, a visualization should be displayed in the PyGame window.
 
 ## Interacting with the visualization
 
 While the visualization is running, its speed (framerate) can be changed by pressing the up arrow (increase speed) or down arrow (decrease speed) on your keyboard.
+
+## Optional: make `config.json` pass strict schema validation
+
+If you enable the JSON schema in your IDE (per the MARS Installation guide), change the datetimes to full ISO-8601 to silence the validator:
+
+```json
+"startTime": "2022-03-01T05:00:00.000Z",
+"endTime":   "2022-03-01T05:10:00.000Z"
+```
+
+(The short form runs fine at runtime; this only affects strict schema validation.)
