@@ -6,7 +6,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Mars.Life.Simulations" Version="5.*"/>
+        <PackageReference Include="Mars.Life.Simulations" Version="6.0.0" />
     </ItemGroup>
 
     <ItemGroup>
