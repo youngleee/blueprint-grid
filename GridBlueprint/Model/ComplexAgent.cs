@@ -112,6 +112,14 @@ public class ComplexAgent : IAgent<GridLayer>, IPositionable
     private void MoveWithBearing()
     {
         var goal = FindRoutableGoal();
+        if (goal.Equals(Position))
+        {
+            // FindRoutableGoal() falls back to the agent's own cell when it is the only routable cell
+            // nearby. Bearing towards a zero-length vector is undefined (NaN), so skip the move instead.
+            Console.WriteLine("No routable neighbor cell to move towards, staying in place.");
+            return;
+        }
+
         var bearing = PositionHelper.CalculateBearingCartesian(Position.X, Position.Y, goal.X, goal.Y);
         var curPos = Position;
         var newPos = _layer.ComplexAgentEnvironment.MoveTowards(this, bearing, 1);
