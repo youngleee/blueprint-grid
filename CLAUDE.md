@@ -13,7 +13,7 @@ The repository has two independent parts that communicate over a websocket:
 
 ## Build & run
 
-Requires .NET SDK 10.0 (pinned in `global.json`, `rollForward: latestMajor`).
+Requires .NET SDK 10.0 (pinned in `global.json`, `rollForward: latestMajor`). Uses the `Mars.Life.Simulations` NuGet package, pinned to `6.0.0` in `GridBlueprint.csproj` (previously a floating `5.*`) — bumping this is a MARS major-version upgrade and can change runtime behavior of framework APIs (see the `MoveWithBearing` gotcha below for a case that broke on the 5→6 upgrade).
 
 ```bash
 dotnet build GridBlueprint.sln          # build
@@ -52,7 +52,7 @@ The model is composed, not hardcoded: `Main()` builds a `ModelDescription` by re
 - `SimpleAgent`: moves to a random routable adjacent cell each tick (or stays in place if blocked), removes itself from the simulation at tick 595.
 - `ComplexAgent`: each tick randomly picks a new `AgentState` (`Model/AgentState.cs`) unless a `MoveTowardsGoal` trip is still in progress, then dispatches to the matching movement method:
   - `MoveRandomly` — same as `SimpleAgent`.
-  - `MoveWithBearing` — computes a bearing toward an explored nearby cell and moves one step via `SpatialHashEnvironment.MoveTowards`, rolling back if the destination turns out not routable.
+  - `MoveWithBearing` — computes a bearing toward an explored nearby cell and moves one step via `SpatialHashEnvironment.MoveTowards`, rolling back if the destination turns out not routable. Skips the move entirely if the explored goal is the agent's own current cell (see gotcha below).
   - `MoveTowardsGoal` — on starting a trip, explores nearby routable cells up to `MaxTripDistance`, picks a goal, computes a path with `_layer.FindPath`, then advances one path step per tick until the goal is reached.
   - `ExploreAgents` — looks for nearby `SimpleAgent` instances within `AgentExploreRadius` and increments their `MeetingCounter` if adjacent (Chebyshev distance ≤ 1).
 - `HelperAgent`: not a "real" agent — it exists purely so the simulation performs a write to the `GridLayer` every tick (`_layer[0,0] = _layer[0,0]`), which is what triggers MARS to push layer data to the visualization websocket (data is only sent on change). It is excluded from the visualization display itself.
@@ -63,6 +63,12 @@ The model is composed, not hardcoded: `Main()` builds a `ModelDescription` by re
 - `globals.startTime`/`endTime`/`deltaT(Unit)` define simulation duration/resolution; `output` controls result output format; `pythonVisualization` toggles the websocket feed to `Visualization/`.
 - `layers[]` and `agents[]` list which layer/agent types to include, their `count`, and the `Resources/*.csv` file supplying their init parameters. Multiple grid CSVs of different shapes/obstacle patterns are provided in `Resources/` (`grid.csv`, `grid_2x2.csv`, `grid_50x25.csv`, `grid_50x50.csv`, `grid_closed.csv`) — swap `layers[0].file` to change the map.
 - The JSON schema validator (if enabled in-IDE) expects full ISO-8601 datetimes; the short form (`"2022-03-01T05:00"`) still runs fine, it just won't pass strict schema validation.
+
+## Known gotchas
+
+- `ComplexAgent.FindRoutableGoal()` (used by both `MoveWithBearing` and `MoveTowardsGoal`) falls back to returning the agent's *own current cell* as the "goal" when it's the only routable cell within range (e.g. the agent is boxed in by obstacles). Any new caller of `FindRoutableGoal()` must handle `goal.Equals(Position)` explicitly:
+  - `MoveWithBearing` checks for this and skips the move, since a zero-length vector makes `PositionHelper.CalculateBearingCartesian` return `NaN`, and `SpatialHashEnvironment.MoveTowards` (as of MARS 6.0.0) throws `ArgumentException: Bearing is not a number` on a `NaN` bearing — this is what broke when the package was bumped from the floating `5.*` to pinned `6.0.0`.
+  - `MoveTowardsGoal` doesn't hit this problem the same way since `_layer.FindPath(Position, Position)` degenerates to a trivial no-op path, but a related infinite-loop edge case there was fixed separately (see commit `7fb8dab`).
 
 ## Adding a new agent or layer type
 

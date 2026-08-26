@@ -45,6 +45,7 @@ The following tools are required on your machine to run a full simulation and vi
 
 - A C# IDE, preferably JetBrains Rider
 - .NET SDK **10.0** or higher (pinned via `global.json`)
+- The `Mars.Life.Simulations` NuGet package, pinned to version **6.0.0** in `GridBlueprint.csproj` (restored automatically on build)
 - Python 3.8 or higher (note: `Visualization/requirements.txt` pins older `pygame`/`websocket-client`; on newer Python you may need to relax those pins)
 
 
