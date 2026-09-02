@@ -24,9 +24,12 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     [PropertyDescription(Name = "GoalY")]
     public int GoalY { get; set; }
 
+    public bool GoalReached { get; private set; }
+
     public void Init(GridLayer layer)
     {
         // Place the agent and add it to MARS's spatial index.
+        _layer = layer;
         Position = new Position(StartX, StartY);
         layer.AdaptiveAgentEnvironment.Insert(this);
         Console.WriteLine($"AdaptiveAgent {ID} initialized at {Position} with goal ({GoalX}, {GoalY})");
@@ -34,6 +37,38 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
     public void Tick()
     {
-        // Movement behavior will be introduced in a later increment.
+        // Move one cardinal step toward the goal on each tick.
+        if (Position.X == GoalX && Position.Y == GoalY)
+        {
+            GoalReached = true;
+            return;
+        }
+
+        var nextX = Position.X;
+        var nextY = Position.Y;
+
+        if (nextX != GoalX)
+            nextX += Math.Sign(GoalX - nextX);
+        else
+            nextY += Math.Sign(GoalY - nextY);
+
+        if (_layer.IsRoutable(nextX, nextY))
+        {
+            Position = new Position(nextX, nextY);
+            _layer.AdaptiveAgentEnvironment.MoveTo(this, new Position(nextX, nextY));
+            Console.WriteLine($"AdaptiveAgent moved to {Position}");
+
+            if (Position.X == GoalX && Position.Y == GoalY)
+            {
+                GoalReached = true;
+                Console.WriteLine("AdaptiveAgent reached its goal");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"AdaptiveAgent blocked at ({nextX}, {nextY})");
+        }
     }
+
+    private GridLayer _layer;
 }
