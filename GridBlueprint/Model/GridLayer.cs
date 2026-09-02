@@ -29,11 +29,13 @@ public class GridLayer : RasterLayer
 
         SimpleAgentEnvironment = new SpatialHashEnvironment<SimpleAgent>(Width, Height);
         ComplexAgentEnvironment = new SpatialHashEnvironment<ComplexAgent>(Width, Height);
+        AdaptiveAgentEnvironment = new SpatialHashEnvironment<AdaptiveAgent>(Width, Height);
 
         var agentManager = layerInitData.Container.Resolve<IAgentManager>();
 
         SimpleAgents = agentManager.Spawn<SimpleAgent, GridLayer>().ToList();
         ComplexAgents = agentManager.Spawn<ComplexAgent, GridLayer>().ToList();
+        AdaptiveAgents = agentManager.Spawn<AdaptiveAgent, GridLayer>().ToList();
         HelperAgents = agentManager.Spawn<HelperAgent, GridLayer>().ToList();
 
         return initLayer;
@@ -68,6 +70,8 @@ public class GridLayer : RasterLayer
     /// </summary>
     public SpatialHashEnvironment<ComplexAgent> ComplexAgentEnvironment { get; set; }
 
+    public SpatialHashEnvironment<AdaptiveAgent> AdaptiveAgentEnvironment { get; set; }
+
     /// <summary>
     ///     A collection that holds the SimpleAgent instances
     /// </summary>
@@ -77,6 +81,8 @@ public class GridLayer : RasterLayer
     ///     A collection that holds the ComplexAgent instances
     /// </summary>
     public List<ComplexAgent> ComplexAgents { get; private set; }
+
+    public List<AdaptiveAgent> AdaptiveAgents { get; private set; }
 
     /// <summary>
     ///     A collection that holds the HelperAgent instance

@@ -15,6 +15,7 @@ internal static class Program
         description.AddLayer<GridLayer>();
         description.AddAgent<SimpleAgent, GridLayer>();
         description.AddAgent<ComplexAgent, GridLayer>();
+        description.AddAgent<AdaptiveAgent, GridLayer>();
         description.AddAgent<HelperAgent, GridLayer>();
 
         // Load the simulation configuration from a JSON configuration file

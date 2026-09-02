@@ -20,8 +20,10 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
     public void Init(GridLayer layer)
     {
-        // Place the agent at its configured starting cell.
+        // Place the agent and add it to MARS's spatial index.
         Position = new Position(StartX, StartY);
+        layer.AdaptiveAgentEnvironment.Insert(this);
+        Console.WriteLine($"AdaptiveAgent {ID} initialized at {Position}");
     }
 
     public void Tick()
