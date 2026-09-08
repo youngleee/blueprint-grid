@@ -26,6 +26,8 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
     public bool GoalReached { get; private set; }
 
+    public long CompletionTick { get; private set; } = -1;
+
     public void Init(GridLayer layer)
     {
         // Place the agent and add it to MARS's spatial index.
@@ -38,9 +40,13 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     public void Tick()
     {
         // Move one cardinal step toward the goal on each tick.
+        if (GoalReached)
+            return;
+
         if (Position.X == GoalX && Position.Y == GoalY)
         {
             GoalReached = true;
+            CompletionTick = _layer.GetCurrentTick();
             return;
         }
 
@@ -61,6 +67,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             if (Position.X == GoalX && Position.Y == GoalY)
             {
                 GoalReached = true;
+                CompletionTick = _layer.GetCurrentTick();
                 Console.WriteLine("AdaptiveAgent reached its goal");
             }
         }
