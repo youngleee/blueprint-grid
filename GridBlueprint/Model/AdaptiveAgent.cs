@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Mars.Interfaces.Agents;
 using Mars.Interfaces.Annotations;
 using Mars.Interfaces.Environments;
@@ -44,6 +45,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
         ActionRegistry.Register(PrimitiveActions.MoveRight);
 
         Console.WriteLine($"AdaptiveAgent {ID} initialized at {Position} with goal ({GoalX}, {GoalY})");
+        Console.WriteLine($"Available actions: {string.Join(", ", ActionRegistry.Actions.Select(action => action.Name))}");
     }
 
     public void Tick()
@@ -59,13 +61,18 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             return;
         }
 
-        var nextX = Position.X;
-        var nextY = Position.Y;
+        var actionName = Position.X != GoalX
+            ? (GoalX > Position.X ? "move_right" : "move_left")
+            : (GoalY > Position.Y ? "move_down" : "move_up");
 
-        if (nextX != GoalX)
-            nextX += Math.Sign(GoalX - nextX);
-        else
-            nextY += Math.Sign(GoalY - nextY);
+        if (!ActionRegistry.TryGet(actionName, out var action))
+        {
+            Console.WriteLine($"AdaptiveAgent has no action named {actionName}");
+            return;
+        }
+
+        var nextX = Position.X + action.DeltaX;
+        var nextY = Position.Y + action.DeltaY;
 
         if (_layer.IsRoutable(nextX, nextY))
         {
