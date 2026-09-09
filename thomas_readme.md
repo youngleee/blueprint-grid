@@ -1,16 +1,16 @@
 # MARS Adaptive Agent
 
-## Watch the demo
+## Demo ansehen
 
-Requires .NET 10 and Python 3.13. Start both terminals in the repository folder.
+Benötigt werden .NET 10 und Python 3.13. Beide Terminals im Repository-Ordner starten.
 
-The visualization scenario uses a 20×20 grid with red obstacle cells.
+Die Visualisierung verwendet ein 20×20-Gitter mit roten Hinderniszellen.
 
-The agent starts at `(1,10)`. Yellow marks the first goal at `(9,10)`.
+Der Agent startet bei `(1,10)`. Gelb markiert das erste Ziel bei `(9,10)`.
 
-Green marks the final goal at `(18,10)`.
+Grün markiert das finale Ziel bei `(18,10)`.
 
-The light-blue dot is the agent.
+Der hellblaue Punkt ist der Agent.
 
 Terminal 1:
 
@@ -29,31 +29,31 @@ cd GridBlueprint
 bash run.sh config.adaptive.visual.json
 ```
 
-After each run, the log opens in your text editor on macOS. Logs are saved in `GridBlueprint/logs/`.
+Nach jedem Lauf wird das Log automatisch im Texteditor geöffnet. Die Logs werden in `GridBlueprint/logs/` gespeichert.
 
-Look for `blocked at`, `Generating skill`, `Registered validated detour`, then `Reusing validated detour` at the second wall and `reached its goal`.
+Achte im Log auf `blocked at`, `Generating skill` und `Registered validated detour`. An der zweiten Wand sollte `Reusing validated detour` erscheinen. Am Ende steht `reached its goal`.
 
-## Skill generation
+## Skill-Generierung
 
-A blocked move triggers a search for a stored detour that legally reaches the goal. If none exists, the generator receives the grid bounds, obstacles and movement rules. Every step is checked before registration. The second wall tests reuse at a different position.
+Wenn der Agent blockiert wird, sucht er zuerst nach einem gespeicherten Umweg zum Ziel. Wenn kein passender Skill existiert, erhält der Generator die Gittergrenzen, Hindernisse und Bewegungsregeln. Jeder Schritt wird vor der Registrierung geprüft. Die zweite Wand testet die Wiederverwendung an einer anderen Position.
 
-Skills are limited to 8 primitive moves. Invalid candidates are discarded; after 3 failed attempts the task reports failure. This demo needs only a 4-move detour.
+Skills dürfen höchstens 8 Grundbewegungen enthalten. Ungültige Vorschläge werden verworfen. Nach 3 fehlgeschlagenen Versuchen wird die Aufgabe als fehlgeschlagen markiert. Diese Demo benötigt nur einen Umweg mit 4 Bewegungen.
 
-Without configuration, the generator returns a canned demo detour. You can select the provider in `GridBlueprint/.env`:
+Ohne Konfiguration verwendet der Generator einen festen Demo-Skill. Der Anbieter wird in `GridBlueprint/.env` ausgewählt:
 
 ```text
-# Offline, deterministic demo
+# Offline-Demo
 ADAPTIVE_LLM_PROVIDER=fake
 
-# Real model generation
+# Echte Modellgenerierung
 ADAPTIVE_LLM_PROVIDER=openai
 OPENAI_API_KEY=your-api-key
 OPENAI_MODEL=gpt-4.1
 ```
 
-If the provider is omitted, `fake` is used. The log names the provider and includes the prompt.
+Wenn kein Anbieter angegeben ist, wird `fake` verwendet. Im Log stehen der Anbieter und der gesendete Prompt.
 
-To request a fresh skill, move `GridBlueprint/bin/Debug/net10.0/skills.json` aside before running. Otherwise a saved detour can be reused immediately. Primitive movements can physically take this route; the missing capability is planning a detour in the current greedy agent.
+Für eine neue Skill-Generierung kann `GridBlueprint/bin/Debug/net10.0/skills.json` vor dem Start verschoben werden. Sonst wird ein gespeicherter Umweg direkt wiederverwendet. Die Grundbewegungen reichen physisch für diesen Weg aus; die fehlende Fähigkeit ist die Planung des Umwegs.
 
 ## Benchmark
 
