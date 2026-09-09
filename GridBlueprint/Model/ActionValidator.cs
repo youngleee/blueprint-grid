@@ -10,9 +10,15 @@ public static class ActionValidator
         ActionRegistry registry,
         out string error)
     {
-        if (string.IsNullOrWhiteSpace(skill.Name))
+        if (skill == null || string.IsNullOrWhiteSpace(skill.Name))
         {
             error = "Skill name cannot be empty";
+            return false;
+        }
+
+        if (skill.Steps == null || skill.Steps.Count == 0 || skill.Steps.Count > CompositeAction.MaxSteps)
+        {
+            error = $"Skill must contain 1 to {CompositeAction.MaxSteps} steps";
             return false;
         }
 

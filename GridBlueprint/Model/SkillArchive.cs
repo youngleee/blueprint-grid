@@ -19,8 +19,10 @@ public static class SkillArchive
             return;
 
         foreach (var skill in skills)
-            if (!registry.Contains(skill.Name))
+            if (ActionValidator.TryValidate(skill, registry, out var error))
                 registry.Register(skill);
+            else
+                System.Console.WriteLine($"Skipped archived skill: {error}");
     }
 
     public static void Save(ActionRegistry registry, string path)

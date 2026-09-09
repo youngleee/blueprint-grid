@@ -5,6 +5,10 @@
 
 # User-specific files
 TODO.md
+GridBlueprint/AdaptiveAgent.csv
+GridBlueprint/ComplexAgent.csv
+GridBlueprint/HelperAgent.csv
+GridBlueprint/SimpleAgent.csv
 *.rsuser
 *.suo
 *.user

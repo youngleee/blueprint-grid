@@ -40,7 +40,7 @@ internal static class Program
         var handle = starter.Run();
 
         // Close the program
-        Console.WriteLine("Successfully executed iterations: " + handle.Iterations);
+        Console.WriteLine("Simulation finished. Iterations: " + handle.Iterations);
         starter.Dispose();
     }
 }

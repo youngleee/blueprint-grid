@@ -13,6 +13,11 @@ public sealed class FakeLlmClient : ILlmClient
             ? "right" : "left";
         var vertical = int.Parse(match.Groups["goalY"].Value) > int.Parse(match.Groups["y"].Value)
             ? "down" : "up";
+        // This canned detour is only an offline fixture for the two-wall demo.
+        if (prompt.Contains("Blocked-route task"))
+            return Task.FromResult(new LlmResponse(
+                "{\"name\":\"detour_right_2\",\"steps\":[\"move_down\",\"move_right\",\"move_right\",\"move_up\"]}",
+                null, null));
         return Task.FromResult(new LlmResponse(
             $"{{\"name\":\"move_diagonal_{vertical}_{horizontal}\",\"steps\":[\"move_{vertical}\",\"move_{horizontal}\"]}}",
             null,
