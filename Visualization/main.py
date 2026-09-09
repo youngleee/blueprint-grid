@@ -42,8 +42,11 @@ class Visualization:
         pygame.init()
         pygame.display.set_caption("MARS-Mini-VIS")
 
-        self.programIcon = pygame.image.load('icon.png')
-        pygame.display.set_icon(self.programIcon)
+        try:
+            self.programIcon = pygame.image.load('icon.png')
+            pygame.display.set_icon(self.programIcon)
+        except pygame.error:
+            pass
 
         self.clock = pygame.time.Clock()
         self.WINDOW_SIZE = [900, 920]
