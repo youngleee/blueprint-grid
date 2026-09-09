@@ -1,6 +1,8 @@
 import _thread as thread
+import csv
 import json
 import time
+from pathlib import Path
 
 import pygame
 from pygame import RESIZABLE, DOUBLEBUF, HWSURFACE
@@ -26,7 +28,7 @@ PURPLE_LIGHT = [162, 134, 222, 10]
 BLUE_LIGHT = [174, 218, 233, 10]
 
 RASTER_COLORS = {
-    1: GREEN_LIGHT,
+    1: RED,
     2: YELLOW_LIGHT,
     3: PURPLE_LIGHT,
     4: BLUE_LIGHT,
@@ -50,7 +52,7 @@ class Visualization:
 
         self.clock = pygame.time.Clock()
         self.WINDOW_SIZE = [900, 920]
-        self.WORLD_SIZE = 0, 0, 100, 100  # used for scaling
+        self.WORLD_SIZE = self.load_world_size()
         self.BORDER_WIDTH_PIXEL = -20
         self.font = pygame.font.Font('freesansbold.ttf', 12)
         self.text = self.font.render('Tick: 0', True, YELLOW)
@@ -77,10 +79,11 @@ class Visualization:
         self.uri = "ws://127.0.0.1:4567/vis"
         self.ws = None
         self.desired_fps = self.fps
-        self.time_to_wait_milliseconds = 10
+        self.time_to_wait_milliseconds = 0
         self.borderColor = (255, 255, 255)
         self.barColor = (0, 128, 0)
         self.has_welcome_been_printed = False
+        self.goals = self.load_goals()
 
         self.set_window_relations(self.WINDOW_SIZE[0], self.WINDOW_SIZE[1])
 
@@ -115,6 +118,23 @@ class Visualization:
                 time.sleep(2)
                 ws = None
         return ws
+
+    def load_goals(self):
+        config_path = Path(__file__).parent.parent / "GridBlueprint/config.adaptive.visual.json"
+        config = json.loads(config_path.read_text())
+        agent = next(agent for agent in config["agents"] if agent["name"] == "AdaptiveAgent")
+        path = config_path.parent / agent["file"]
+        with path.open(newline="") as file:
+            row = next(csv.DictReader(file, delimiter=";"))
+        return [(int(row["GoalX"]), int(row["GoalY"])),
+                (int(row["SecondGoalX"]), int(row["SecondGoalY"]))]
+
+    def load_world_size(self):
+        config_path = Path(__file__).parent.parent / "GridBlueprint/config.adaptive.visual.json"
+        config = json.loads(config_path.read_text())
+        path = config_path.parent / config["layers"][0]["file"]
+        rows = list(csv.reader(path.open(), delimiter=";"))
+        return 0, 0, len(rows[0]) - 1, len(rows) - 1
 
     def load_data(self):
         if self.ws is None:
@@ -221,6 +241,11 @@ class Visualization:
                     color = RASTER_COLORS[value]
                 
                 pygame.draw.rect(surface, color, pygame.Rect(x, y, width, height))
+
+        for goal, color in zip(self.goals, [YELLOW, GREEN]):
+            x = (goal[0] - self.WORLD_SIZE[0]) * scale_x
+            y = (goal[1] - self.WORLD_SIZE[1]) * scale_y
+            pygame.draw.rect(surface, color, pygame.Rect(x, y, scale_x, scale_y))
 
         for geometry in self.point_features:
             point = geometry["coordinates"]

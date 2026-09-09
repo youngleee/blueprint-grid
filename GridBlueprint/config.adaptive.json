@@ -10,7 +10,7 @@
   "layers": [
     {
       "name": "GridLayer",
-      "file": "Resources/grid_open_5x5.csv",
+      "file": "Resources/grid_open_20x20.csv",
       "pythonVisualization": false
     }
   ],

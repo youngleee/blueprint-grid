@@ -1,7 +1,7 @@
 {
   "globals": {
     "startTime": "2022-03-01T05:00",
-    "endTime": "2022-03-01T05:10",
+    "endTime": "2022-03-01T05:01",
     "deltaTUnit": "seconds",
     "deltaT": 1,
     "output": "csv",
@@ -10,7 +10,7 @@
   "layers": [
     {
       "name": "GridLayer",
-      "file": "Resources/grid_open_5x5.csv",
+      "file": "Resources/grid_detour_20x20.csv",
       "pythonVisualization": true
     }
   ],
@@ -28,7 +28,7 @@
     {
       "name": "AdaptiveAgent",
       "count": 1,
-      "file": "Resources/adaptive_agent.csv"
+      "file": "Resources/adaptive_detour_agent.csv"
     },
     {
       "name": "HelperAgent",
