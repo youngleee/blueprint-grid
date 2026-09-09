@@ -25,11 +25,25 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     [PropertyDescription(Name = "GoalY")]
     public int GoalY { get; set; }
 
+    [PropertyDescription(Name = "SecondGoalX")]
+    public int SecondGoalX { get; set; } = -1;
+
+    [PropertyDescription(Name = "SecondGoalY")]
+    public int SecondGoalY { get; set; } = -1;
+
     public bool GoalReached { get; private set; }
 
     public long CompletionTick { get; private set; } = -1;
 
+    public int GeneratedSkillCount { get; private set; }
+
+    public int SkillReuseCount { get; private set; }
+
     public ActionRegistry ActionRegistry { get; } = new();
+
+    private CompositeAction _activeSkill;
+    private int _activeSkillStep;
+    private bool _secondGoalStarted;
 
     public void Init(GridLayer layer)
     {
@@ -56,16 +70,36 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
         if (Position.X == GoalX && Position.Y == GoalY)
         {
-            GoalReached = true;
-            CompletionTick = _layer.GetCurrentTick();
+            AdvanceGoalOrComplete();
+            return;
+        }
+
+        if (_activeSkill != null)
+        {
+            ExecuteSkillStep();
             return;
         }
 
         if (Position.X != GoalX && Position.Y != GoalY)
         {
             var diagonalName = GetDiagonalSkillName();
-            if (!ActionRegistry.TryGetComposite(diagonalName, out _))
-                Console.WriteLine($"No applicable skill named {diagonalName}");
+            if (!ActionRegistry.TryGetComposite(diagonalName, out var skill))
+            {
+                skill = ManualSkills.MoveDiagonalDownRight;
+                ActionRegistry.Register(skill);
+                GeneratedSkillCount++;
+                Console.WriteLine($"Registered skill {skill.Name}");
+            }
+            else
+            {
+                SkillReuseCount++;
+                Console.WriteLine($"Reusing skill {skill.Name}");
+            }
+
+            _activeSkill = skill;
+            _activeSkillStep = 0;
+            ExecuteSkillStep();
+            return;
         }
 
         var actionName = Position.X != GoalX
@@ -88,11 +122,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             Console.WriteLine($"AdaptiveAgent moved to {Position}");
 
             if (Position.X == GoalX && Position.Y == GoalY)
-            {
-                GoalReached = true;
-                CompletionTick = _layer.GetCurrentTick();
-                Console.WriteLine("AdaptiveAgent reached its goal");
-            }
+                AdvanceGoalOrComplete();
         }
         else
         {
@@ -107,5 +137,54 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
         var horizontal = GoalX > Position.X ? "right" : "left";
         var vertical = GoalY > Position.Y ? "down" : "up";
         return $"move_diagonal_{vertical}_{horizontal}";
+    }
+
+    private void ExecuteSkillStep()
+    {
+        if (_activeSkillStep >= _activeSkill.Steps.Count)
+        {
+            _activeSkill = null;
+            return;
+        }
+
+        var stepName = _activeSkill.Steps[_activeSkillStep++];
+        if (!ActionRegistry.TryGet(stepName, out var step))
+        {
+            Console.WriteLine($"Skill { _activeSkill.Name } references unknown action {stepName}");
+            _activeSkill = null;
+            return;
+        }
+
+        var next = new Position(Position.X + step.DeltaX, Position.Y + step.DeltaY);
+        if (!_layer.IsRoutable(next.X, next.Y))
+        {
+            Console.WriteLine($"AdaptiveAgent blocked at {next}");
+            _activeSkill = null;
+            return;
+        }
+
+        Position = next;
+        _layer.AdaptiveAgentEnvironment.MoveTo(this, next);
+        Console.WriteLine($"AdaptiveAgent moved to {Position} via {stepName}");
+
+        if (Position.X == GoalX && Position.Y == GoalY)
+            AdvanceGoalOrComplete();
+    }
+
+    private void AdvanceGoalOrComplete()
+    {
+        _activeSkill = null;
+        if (!_secondGoalStarted && SecondGoalX >= 0 && SecondGoalY >= 0)
+        {
+            GoalX = SecondGoalX;
+            GoalY = SecondGoalY;
+            _secondGoalStarted = true;
+            Console.WriteLine($"AdaptiveAgent started second goal ({GoalX}, {GoalY})");
+            return;
+        }
+
+        GoalReached = true;
+        CompletionTick = _layer.GetCurrentTick();
+        Console.WriteLine("AdaptiveAgent reached its goal");
     }
 }
