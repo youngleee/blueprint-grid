@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using Mars.Interfaces.Agents;
 using Mars.Interfaces.Annotations;
@@ -44,6 +45,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     private CompositeAction _activeSkill;
     private int _activeSkillStep;
     private bool _secondGoalStarted;
+    private string ArchivePath => Path.Combine(AppContext.BaseDirectory, "skills.json");
 
     public void Init(GridLayer layer)
     {
@@ -57,6 +59,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
         ActionRegistry.Register(PrimitiveActions.MoveDown);
         ActionRegistry.Register(PrimitiveActions.MoveLeft);
         ActionRegistry.Register(PrimitiveActions.MoveRight);
+        SkillArchive.Load(ActionRegistry, ArchivePath);
 
         Console.WriteLine($"AdaptiveAgent {ID} initialized at {Position} with goal ({GoalX}, {GoalY})");
         Console.WriteLine($"Available actions: {string.Join(", ", ActionRegistry.Actions.Select(action => action.Name))}");
@@ -93,6 +96,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
                 }
 
                 ActionRegistry.Register(skill);
+                SkillArchive.Save(ActionRegistry, ArchivePath);
                 GeneratedSkillCount++;
                 Console.WriteLine($"Registered skill {skill.Name}");
             }
