@@ -39,7 +39,19 @@ A blocked move triggers a search for a stored detour that legally reaches the go
 
 Skills are limited to 8 primitive moves. Invalid candidates are discarded; after 3 failed attempts the task reports failure. This demo needs only a 4-move detour.
 
-Without configuration, the generator returns a canned demo detour. For real generation, create `GridBlueprint/.env` from `.env.example`, select `ADAPTIVE_LLM_PROVIDER=openai` and fill in your API key, then run the same demo command. The log names the provider and includes the prompt.
+Without configuration, the generator returns a canned demo detour. You can select the provider in `GridBlueprint/.env`:
+
+```text
+# Offline, deterministic demo
+ADAPTIVE_LLM_PROVIDER=fake
+
+# Real model generation
+ADAPTIVE_LLM_PROVIDER=openai
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-4.1
+```
+
+If the provider is omitted, `fake` is used. The log names the provider and includes the prompt.
 
 To request a fresh skill, move `GridBlueprint/bin/Debug/net10.0/skills.json` aside before running. Otherwise a saved detour can be reused immediately. Primitive movements can physically take this route; the missing capability is planning a detour in the current greedy agent.
 
