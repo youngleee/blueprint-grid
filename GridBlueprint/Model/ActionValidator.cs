@@ -1,3 +1,5 @@
+using System;
+
 namespace GridBlueprint.Model;
 
 // Checks a composite skill before it enters the action registry.
@@ -28,9 +30,15 @@ public static class ActionValidator
 
         foreach (var step in skill.Steps)
         {
-            if (!registry.TryGet(step, out _))
+            if (!registry.TryGet(step, out var primitive))
             {
                 error = $"Unknown primitive action: {step}";
+                return false;
+            }
+
+            if (Math.Abs(primitive.DeltaX) + Math.Abs(primitive.DeltaY) != 1)
+            {
+                error = $"Invalid movement delta: {step}";
                 return false;
             }
         }

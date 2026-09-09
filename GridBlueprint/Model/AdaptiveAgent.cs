@@ -85,7 +85,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             var diagonalName = GetDiagonalSkillName();
             if (!ActionRegistry.TryGetComposite(diagonalName, out var skill))
             {
-                skill = ManualSkills.MoveDiagonalDownRight;
+                skill = ManualSkills.Get(diagonalName);
                 if (!ActionValidator.TryValidate(skill, ActionRegistry, out var error))
                 {
                     Console.WriteLine($"Rejected skill {skill.Name}: {error}");
@@ -118,10 +118,10 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             return;
         }
 
-        var nextX = Position.X + action.DeltaX;
-        var nextY = Position.Y + action.DeltaY;
+        var nextX = (int)(Position.X + action.DeltaX);
+        var nextY = (int)(Position.Y + action.DeltaY);
 
-        if (_layer.IsRoutable(nextX, nextY))
+        if (CanEnter(nextX, nextY))
         {
             Position = new Position(nextX, nextY);
             _layer.AdaptiveAgentEnvironment.MoveTo(this, new Position(nextX, nextY));
@@ -161,8 +161,10 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             return;
         }
 
-        var next = new Position(Position.X + step.DeltaX, Position.Y + step.DeltaY);
-        if (!_layer.IsRoutable(next.X, next.Y))
+        var next = new Position(
+            (int)(Position.X + step.DeltaX),
+            (int)(Position.Y + step.DeltaY));
+        if (!CanEnter((int)next.X, (int)next.Y))
         {
             Console.WriteLine($"AdaptiveAgent blocked at {next}");
             _activeSkill = null;
@@ -192,5 +194,11 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
         GoalReached = true;
         CompletionTick = _layer.GetCurrentTick();
         Console.WriteLine("AdaptiveAgent reached its goal");
+    }
+
+    private bool CanEnter(int x, int y)
+    {
+        return x >= 0 && x < _layer.Width && y >= 0 && y < _layer.Height
+            && _layer.IsRoutable(x, y);
     }
 }
