@@ -61,6 +61,13 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             return;
         }
 
+        if (Position.X != GoalX && Position.Y != GoalY)
+        {
+            var diagonalName = GetDiagonalSkillName();
+            if (!ActionRegistry.TryGetComposite(diagonalName, out _))
+                Console.WriteLine($"No applicable skill named {diagonalName}");
+        }
+
         var actionName = Position.X != GoalX
             ? (GoalX > Position.X ? "move_right" : "move_left")
             : (GoalY > Position.Y ? "move_down" : "move_up");
@@ -94,4 +101,11 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     }
 
     private GridLayer _layer;
+
+    private string GetDiagonalSkillName()
+    {
+        var horizontal = GoalX > Position.X ? "right" : "left";
+        var vertical = GoalY > Position.Y ? "down" : "up";
+        return $"move_diagonal_{vertical}_{horizontal}";
+    }
 }
