@@ -4,5 +4,5 @@ namespace GridBlueprint.Model;
 
 public interface ILlmClient
 {
-    Task<string> GenerateAsync(string prompt);
+    Task<LlmResponse> GenerateAsync(string prompt);
 }

@@ -9,6 +9,10 @@ public sealed class LlmSkillGenerator
 {
     private readonly ILlmClient _client;
 
+    public int CallCount { get; private set; }
+    public int InputTokens { get; private set; }
+    public int OutputTokens { get; private set; }
+
     public LlmSkillGenerator(ILlmClient client)
     {
         _client = client;
@@ -24,8 +28,11 @@ public sealed class LlmSkillGenerator
         var prompt = $"State ({x},{y}), goal ({goalX},{goalY}). " +
             $"Available actions: {string.Join(", ", availableActions)}. " +
             "Return a JSON skill with name and steps only.";
+        CallCount++;
         var response = _client.GenerateAsync(prompt).GetAwaiter().GetResult();
-        return JsonSerializer.Deserialize<CompositeAction>(response, new JsonSerializerOptions
+        InputTokens += response.InputTokens ?? 0;
+        OutputTokens += response.OutputTokens ?? 0;
+        return JsonSerializer.Deserialize<CompositeAction>(response.Text, new JsonSerializerOptions
             { PropertyNameCaseInsensitive = true })
             ?? throw new JsonException("LLM returned an empty skill");
     }

@@ -40,6 +40,10 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
     public int SkillReuseCount { get; private set; }
 
+    public int LlmCallCount => _skillGenerator.CallCount;
+    public int InputTokens => _skillGenerator.InputTokens;
+    public int OutputTokens => _skillGenerator.OutputTokens;
+
     public ActionRegistry ActionRegistry { get; } = new();
 
     private CompositeAction _activeSkill;

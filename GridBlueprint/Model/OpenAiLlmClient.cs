@@ -21,7 +21,7 @@ public sealed class OpenAiLlmClient : ILlmClient
         _model = model;
     }
 
-    public async Task<string> GenerateAsync(string prompt)
+    public async Task<LlmResponse> GenerateAsync(string prompt)
     {
         var request = new
         {
@@ -38,7 +38,12 @@ public sealed class OpenAiLlmClient : ILlmClient
         using var response = await _httpClient.SendAsync(message);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return document.RootElement.GetProperty("output")[0]
+        var text = document.RootElement.GetProperty("output")[0]
             .GetProperty("content")[0].GetProperty("text").GetString() ?? string.Empty;
+        var usage = document.RootElement.GetProperty("usage");
+        return new LlmResponse(
+            text,
+            usage.GetProperty("input_tokens").GetInt32(),
+            usage.GetProperty("output_tokens").GetInt32());
     }
 }
