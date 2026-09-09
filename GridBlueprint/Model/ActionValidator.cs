@@ -22,6 +22,12 @@ public static class ActionValidator
             return false;
         }
 
+        if (registry.ContainsCompositeSteps(skill.Steps))
+        {
+            error = "Skill steps already exist in the same order";
+            return false;
+        }
+
         if (skill.Steps.Count == 0)
         {
             error = "Skill must contain at least one step";

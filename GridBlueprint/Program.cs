@@ -11,6 +11,11 @@ internal static class Program
     private static void Main(string[] args)
     {
         EnvironmentFile.Load(".env");
+        if (args.Length == 1 && args[0] == "--benchmark")
+        {
+            BenchmarkRunner.Run();
+            return;
+        }
 
         // Create a new model description and add model components to it
         var description = new ModelDescription();

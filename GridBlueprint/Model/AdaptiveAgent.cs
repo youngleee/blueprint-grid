@@ -49,6 +49,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     private CompositeAction _activeSkill;
     private int _activeSkillStep;
     private bool _secondGoalStarted;
+    private bool _skillGenerationFailed;
     private string ArchivePath => Path.Combine(AppContext.BaseDirectory, "skills.json");
     private readonly LlmSkillGenerator _skillGenerator = new(LlmClientFactory.Create());
 
@@ -90,33 +91,41 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
         if (Position.X != GoalX && Position.Y != GoalY)
         {
-            var diagonalName = GetDiagonalSkillName();
-            if (!ActionRegistry.TryGetComposite(diagonalName, out var skill))
+            var remainingX = (int)(GoalX - Position.X);
+            var remainingY = (int)(GoalY - Position.Y);
+            if (!ActionRegistry.TryGetApplicableComposite(remainingX, remainingY, out var skill))
             {
-                try
+                if (!_skillGenerationFailed)
                 {
-                    skill = _skillGenerator.Generate(
-                        (int)Position.X,
-                        (int)Position.Y,
-                        GoalX,
-                        GoalY,
-                        ActionRegistry.Actions.Select(action => action.Name));
-                }
-                catch (Exception generationError)
-                {
-                    Console.WriteLine($"Skill generation failed: {generationError.Message}");
-                    return;
-                }
-                if (!ActionValidator.TryValidate(skill, ActionRegistry, out var error))
-                {
-                    Console.WriteLine($"Rejected skill {skill.Name}: {error}");
-                    return;
+                    try
+                    {
+                        skill = _skillGenerator.Generate(
+                            (int)Position.X,
+                            (int)Position.Y,
+                            GoalX,
+                            GoalY,
+                            ActionRegistry.Actions.Select(action => action.Name));
+                    }
+                    catch (Exception generationError)
+                    {
+                        _skillGenerationFailed = true;
+                        Console.WriteLine($"Skill generation failed: {generationError.Message}");
+                    }
+
+                    if (!_skillGenerationFailed && !ActionValidator.TryValidate(skill, ActionRegistry, out var error))
+                    {
+                        Console.WriteLine($"Rejected skill {skill.Name}: {error}");
+                        _skillGenerationFailed = true;
+                    }
                 }
 
-                ActionRegistry.Register(skill);
-                SkillArchive.Save(ActionRegistry, ArchivePath);
-                GeneratedSkillCount++;
-                Console.WriteLine($"Registered skill {skill.Name}");
+                if (!_skillGenerationFailed)
+                {
+                    ActionRegistry.Register(skill);
+                    SkillArchive.Save(ActionRegistry, ArchivePath);
+                    GeneratedSkillCount++;
+                    Console.WriteLine($"Registered skill {skill.Name}");
+                }
             }
             else
             {
@@ -124,10 +133,13 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
                 Console.WriteLine($"Reusing skill {skill.Name}");
             }
 
-            _activeSkill = skill;
-            _activeSkillStep = 0;
-            ExecuteSkillStep();
-            return;
+            if (!_skillGenerationFailed)
+            {
+                _activeSkill = skill;
+                _activeSkillStep = 0;
+                ExecuteSkillStep();
+                return;
+            }
         }
 
         var actionName = Position.X != GoalX
@@ -159,13 +171,6 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     }
 
     private GridLayer _layer;
-
-    private string GetDiagonalSkillName()
-    {
-        var horizontal = GoalX > Position.X ? "right" : "left";
-        var vertical = GoalY > Position.Y ? "down" : "up";
-        return $"move_diagonal_{vertical}_{horizontal}";
-    }
 
     private void ExecuteSkillStep()
     {
@@ -209,6 +214,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             GoalX = SecondGoalX;
             GoalY = SecondGoalY;
             _secondGoalStarted = true;
+            _skillGenerationFailed = false;
             Console.WriteLine($"AdaptiveAgent started second goal ({GoalX}, {GoalY})");
             return;
         }
