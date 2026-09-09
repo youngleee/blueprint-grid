@@ -46,7 +46,7 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
     private int _activeSkillStep;
     private bool _secondGoalStarted;
     private string ArchivePath => Path.Combine(AppContext.BaseDirectory, "skills.json");
-    private readonly LlmSkillGenerator _skillGenerator = new(new FakeLlmClient());
+    private readonly LlmSkillGenerator _skillGenerator = new(LlmClientFactory.Create());
 
     public void Init(GridLayer layer)
     {
@@ -89,12 +89,20 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             var diagonalName = GetDiagonalSkillName();
             if (!ActionRegistry.TryGetComposite(diagonalName, out var skill))
             {
-                skill = _skillGenerator.Generate(
-                    (int)Position.X,
-                    (int)Position.Y,
-                    GoalX,
-                    GoalY,
-                    ActionRegistry.Actions.Select(action => action.Name));
+                try
+                {
+                    skill = _skillGenerator.Generate(
+                        (int)Position.X,
+                        (int)Position.Y,
+                        GoalX,
+                        GoalY,
+                        ActionRegistry.Actions.Select(action => action.Name));
+                }
+                catch (Exception generationError)
+                {
+                    Console.WriteLine($"Skill generation failed: {generationError.Message}");
+                    return;
+                }
                 if (!ActionValidator.TryValidate(skill, ActionRegistry, out var error))
                 {
                     Console.WriteLine($"Rejected skill {skill.Name}: {error}");
