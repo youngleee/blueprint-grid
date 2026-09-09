@@ -456,3 +456,4 @@ $RECYCLE.BIN/
 .ipynb_checkpoints
 /cache
 GridBlueprint/skills.json
+GridBlueprint/.env

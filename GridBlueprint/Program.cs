@@ -10,6 +10,8 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        EnvironmentFile.Load(".env");
+
         // Create a new model description and add model components to it
         var description = new ModelDescription();
         description.AddLayer<GridLayer>();
