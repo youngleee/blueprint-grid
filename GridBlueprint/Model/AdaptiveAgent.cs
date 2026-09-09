@@ -28,12 +28,21 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
 
     public long CompletionTick { get; private set; } = -1;
 
+    public ActionRegistry ActionRegistry { get; } = new();
+
     public void Init(GridLayer layer)
     {
         // Place the agent and add it to MARS's spatial index.
         _layer = layer;
         Position = new Position(StartX, StartY);
         layer.AdaptiveAgentEnvironment.Insert(this);
+
+        // Register the trusted actions available at startup.
+        ActionRegistry.Register(PrimitiveActions.MoveUp);
+        ActionRegistry.Register(PrimitiveActions.MoveDown);
+        ActionRegistry.Register(PrimitiveActions.MoveLeft);
+        ActionRegistry.Register(PrimitiveActions.MoveRight);
+
         Console.WriteLine($"AdaptiveAgent {ID} initialized at {Position} with goal ({GoalX}, {GoalY})");
     }
 
