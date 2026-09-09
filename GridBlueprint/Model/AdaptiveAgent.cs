@@ -86,6 +86,12 @@ public class AdaptiveAgent : IAgent<GridLayer>, IPositionable
             if (!ActionRegistry.TryGetComposite(diagonalName, out var skill))
             {
                 skill = ManualSkills.MoveDiagonalDownRight;
+                if (!ActionValidator.TryValidate(skill, ActionRegistry, out var error))
+                {
+                    Console.WriteLine($"Rejected skill {skill.Name}: {error}");
+                    return;
+                }
+
                 ActionRegistry.Register(skill);
                 GeneratedSkillCount++;
                 Console.WriteLine($"Registered skill {skill.Name}");

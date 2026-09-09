@@ -30,4 +30,9 @@ public sealed class ActionRegistry
     {
         return _compositeActions.TryGetValue(name, out action);
     }
+
+    public bool Contains(string name)
+    {
+        return _actions.ContainsKey(name) || _compositeActions.ContainsKey(name);
+    }
 }
