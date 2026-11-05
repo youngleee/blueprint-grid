@@ -116,16 +116,23 @@ parameters drawn from ranges so held-out seeds behave differently.
 
 **Guard** — blocks a corridor/doorway cell.
 
+Stationary guard on a corridor chokepoint. Talk/give/throw only work while the
+guard is `idle` or `alert`.
+
 | State | Transition | Probability (range) |
 |---|---|---|
-| `idle` | agent within 2 cells and visible → `alert` | 1.0 |
-| `alert` | `talk` → `idle` (calmed) | p_calm ∈ [0.3, 0.7] |
-| `alert` | `give(food)` → `distracted(k)` | p_bribe_food ∈ [0.5, 0.9] |
-| `alert` | `give(coin)` → `bribed` (permanent, leaves post) | p_bribe_coin ∈ [0.2, 0.8] |
-| `alert` | `throw(item, cell)` away from guard → `distracted(k)`, guard walks to cell | p_throw ∈ [0.6, 1.0] |
-| `alert` | 3 consecutive ticks adjacent without a successful interaction → `hostile` | 1.0 |
-| `distracted(k)` | after k ticks → `alert` | k ∈ [3, 6] |
-| `hostile` | agent adjacent → episode fails | 1.0 |
+| `idle` | agent within 2 cells with line of sight → `alert`, patience reset | 1.0 |
+| `alert` | agent leaves detection range → `idle`, patience reset | 1.0 |
+| `alert` | `talk` (range 2) → `calm` (permanent, lets agent pass) | p_calm ∈ [0.3, 0.7] |
+| `alert` | `give(food)` (adjacent) → `distracted(k)` | p_food ∈ [0.5, 0.9] |
+| `alert` | `give(coin)` (adjacent) → `bribed` (permanent) | p_coin ∈ [0.2, 0.8] |
+| `idle`/`alert` | `throw(item, cell)` within 4 of guard → `distracted(k)` | p_throw ∈ [0.6, 1.0] |
+| `alert` | patience runs out (P ∈ [3, 5] ticks in range, not persuaded) → `hostile` → **episode fails** | 1.0 |
+| `distracted(k)` | after k ticks → `alert` (if agent in range) or `idle` | k ∈ [3, 6] |
+
+`idle`, `alert`, `hostile` block movement; `calm`, `bribed`, `distracted` do not.
+Failed interactions cost a tick and patience, which is what makes open-loop
+retrying risky.
 
 **Door**
 
@@ -134,6 +141,16 @@ parameters drawn from ranges so held-out seeds behave differently.
 | `locked` | `use(key, door)` with matching key → `open` | 1.0 |
 | `locked` | `use(lockpick, door)` → `open` | p_pick ∈ [0.2, 0.5] per attempt |
 | `jammed` | `use(none, door)` (push) → `open` | p_push ∈ [0.3, 0.6] per attempt |
+
+Closed doors block movement and sight.
+
+**Placement (implemented in `ScenarioGenerator`):** obstacles go on corridor
+cells whose removal disconnects start from exit (chokepoints), spread along the
+room chain. Each obstacle's required item (key for its locked door, food for a
+guard) is placed in a room reachable while that obstacle and all later ones are
+closed — solvable by construction. Extra items (coin, lockpick, food, tool) are
+alternatives and distractors. Tiers: 1 = one guard, 2 = locked + jammed door,
+3 = all three.
 
 **Trap (SHOULD)** — hidden; `look` reveals it within radius 1 with p_detect ∈
 [0.4, 0.8]; `use(tool, trap)` disarms; stepping on it fails the episode.

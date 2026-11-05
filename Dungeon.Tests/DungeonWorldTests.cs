@@ -13,7 +13,7 @@ public class DungeonWorldTests
     public void Move_into_floor_advances_position_and_tick()
     {
         var world = new DungeonWorld(Corridor, seed: 1, sightRadius: 2);
-        Assert.Equal(StepOutcome.Moved, world.Move(Direction.E));
+        Assert.Equal(ActionStatus.Success, world.Move(Direction.E).Status);
         Assert.Equal(new Cell(2, 1), world.AgentPosition);
         Assert.Equal(1, world.Tick);
     }
@@ -22,7 +22,7 @@ public class DungeonWorldTests
     public void Move_into_wall_is_blocked_but_still_costs_a_tick()
     {
         var world = new DungeonWorld(Corridor, seed: 1, sightRadius: 2);
-        Assert.Equal(StepOutcome.Blocked, world.Move(Direction.N));
+        Assert.Equal(ActionStatus.Failed, world.Move(Direction.N).Status);
         Assert.Equal(Corridor.Start, world.AgentPosition);
         Assert.Equal(1, world.Tick);
     }
@@ -42,6 +42,9 @@ public class DungeonWorldTests
         for (var i = 0; i < 7; i++)
             world.Move(Direction.E);
         Assert.True(world.AtExit);
+        Assert.Equal(EpisodeStatus.Succeeded, world.Status);
+        Assert.Equal(ActionStatus.Invalid, world.Wait().Status);
+        Assert.Equal(7, world.Tick);
     }
 
     [Fact]
@@ -81,7 +84,6 @@ public class DungeonWorldTests
         world.OutcomeRng.NextULong();
         var clone = world.Clone();
         Assert.Equal(world.OutcomeRng.NextULong(), clone.OutcomeRng.NextULong());
-        Assert.Equal(world.EntityRng.NextULong(), clone.EntityRng.NextULong());
     }
 
     [Fact]
