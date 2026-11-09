@@ -12,6 +12,9 @@ public sealed record ActionParam(string Name, ParamType Type, bool Optional = fa
 // Uniform result of one decision, whatever kind of action it was.
 public sealed record ActionOutcome(string Call, string Status, int Ticks, string Message)
 {
+    // For skills: the outcome of every action the skill called, in order (nested skills indented).
+    public IReadOnlyList<string> Steps { get; init; } = [];
+
     public bool IsInvalid => Status == "invalid";
 
     public override string ToString() =>
@@ -32,7 +35,7 @@ public sealed record AgentAction(
     ActionKind Kind,
     IReadOnlyList<ActionParam> Params,
     string Description,
-    Func<AgentContext, IReadOnlyList<string>, ActionOutcome> Run)
+    Func<AgentContext, ActionSpace, IReadOnlyList<string>, ActionOutcome> Run)
 {
     public string Signature => Params.Count == 0 ? Name : $"{Name}({string.Join(", ", Params)})";
 }
@@ -62,10 +65,12 @@ public sealed class ActionSpace
         return copy;
     }
 
+    // One decision: validates, runs, and records the outcome as the agent's last action.
     public ActionOutcome Execute(AgentContext ctx, string name, IReadOnlyList<string> args) =>
-        ctx.Decide(c => ExecuteUnrecorded(c, name, args));
+        ctx.Decide(c => Invoke(c, name, args));
 
-    private ActionOutcome ExecuteUnrecorded(AgentContext ctx, string name, IReadOnlyList<string> args)
+    // Same validation and execution, but not a decision of its own. Used by skills for their steps.
+    public ActionOutcome Invoke(AgentContext ctx, string name, IReadOnlyList<string> args)
     {
         var call = args.Count == 0 ? name : $"{name}({string.Join(",", args)})";
         if (ctx.IsOver)
@@ -88,7 +93,7 @@ public sealed class ActionSpace
                 return new ActionOutcome(call, "invalid", 0, error);
             resolved.Add(value);
         }
-        return action.Run(ctx, resolved);
+        return action.Run(ctx, this, resolved);
     }
 
     // Entity arguments are checked against the agent's memory, not the world: naming an
@@ -174,15 +179,20 @@ public static class StandardActions
             [new("target", ParamType.Target), new("distance", ParamType.Int, Optional: true)],
             "Walk over known cells to a seen entity or 'exit'. Stops next to doors and guards, on items and the exit, " +
             "or earlier if something new comes into sight, a move fails, or a guard becomes alert.",
-            (ctx, a) => ActionOutcome.From(Navigation.GoTo(ctx, a[0], a.Count > 1 ? int.Parse(a[1]) : null)));
+            (ctx, _, a) => ActionOutcome.From(Navigation.GoTo(ctx, a[0], a.Count > 1 ? int.Parse(a[1]) : null)));
         yield return new AgentAction("explore", ActionKind.Helper, [],
             "Walk toward the nearest unexplored area until something new comes into sight.",
-            (ctx, _) => ActionOutcome.From(Navigation.Explore(ctx)));
+            (ctx, _, _) => ActionOutcome.From(Navigation.Explore(ctx)));
+        yield return new AgentAction("retreat", ActionKind.Helper,
+            [new("target", ParamType.Target), new("distance", ParamType.Int)],
+            "Walk away over known cells until at least `distance` cells from a seen entity. " +
+            "Moving out of a guard's sight makes it forget you.",
+            (ctx, _, a) => ActionOutcome.From(Navigation.Retreat(ctx, a[0], int.Parse(a[1]))));
     }
 
     private static AgentAction Prim(string name, ActionParam[] ps, string description,
         Func<DungeonWorld, IReadOnlyList<string>, ActionResult> run) =>
-        new(name, ActionKind.Primitive, ps, description, (ctx, a) =>
+        new(name, ActionKind.Primitive, ps, description, (ctx, _, a) =>
         {
             var before = ctx.Tick;
             var r = ctx.Do(w => run(w, a));

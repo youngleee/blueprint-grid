@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dungeon.Core;
 using Dungeon.Llm;
+using Dungeon.Skills;
 
 namespace Dungeon.Agent;
 
@@ -34,7 +35,16 @@ public sealed record ExperimentSummary(
 //   <out>/traces/seed_N.jsonl one line per decision (StepTrace)
 public static class ExperimentRunner
 {
-    public static readonly string[] Conditions = ["A", "R"];
+    // A: LLM, primitives + helpers · R: rules, same actions · D: LLM + hand-written skills · RD: rules + same skills
+    public static readonly string[] Conditions = ["A", "R", "D", "RD"];
+
+    public static bool UsesLlm(string condition) => condition is "A" or "D";
+
+    public static ActionSpace InitialSpace(string condition) => condition switch
+    {
+        "D" or "RD" => StandardActions.Create().WithSkills(HandwrittenSkills.Load()),
+        _ => StandardActions.Create()
+    };
 
     public static ScenarioOptions TierOptions(string tier) => tier switch
     {
@@ -60,8 +70,8 @@ public static class ExperimentRunner
         string? aborted = null;
         foreach (var seed in config.Seeds)
         {
-            // Every episode starts from the same action set; nothing carries over in A and R.
-            var space = StandardActions.Create();
+            // Every episode starts from the same action set; nothing carries over in A, R, D, RD.
+            var space = InitialSpace(config.Condition);
             EpisodeResult result;
             IReadOnlyList<StepTrace> trace;
             try

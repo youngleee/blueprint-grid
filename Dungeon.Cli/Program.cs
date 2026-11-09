@@ -2,11 +2,13 @@
 using Dungeon.Core;
 using Dungeon.Llm;
 using Dungeon.Render;
+using Dungeon.Skills;
 
 // Usage:
-//   dotnet run --project Dungeon.Cli -- play   [--seed N] [--tier 1|2|3] [--sight R]
+//   dotnet run --project Dungeon.Cli -- play   [--seed N] [--tier 1|2|3] [--sight R] [--skills handwritten|FILE]
 //   dotnet run --project Dungeon.Cli -- render [--seed N] [--tier 1|2|3]
-//   dotnet run --project Dungeon.Cli -- run    --condition A|R [--tier 3] [--seeds 1-20] [--max-decisions 40]
+//   dotnet run --project Dungeon.Cli -- skills [--file FILE]       (print a skill library)
+//   dotnet run --project Dungeon.Cli -- run    --condition A|R|D|RD [--tier 3] [--seeds 1-20] [--max-decisions 40]
 //                                              [--llm live|record|replay] [--provider openai|stub] [--out DIR]
 //                                              [--max-calls N] [--max-tokens N] [--env FILE]
 //   echo "e\ne\nstate" | dotnet run --project Dungeon.Cli -- play --seed 1   (scripted)
@@ -20,13 +22,14 @@ try
         case "render": Render(); break;
         case "play": Play(); break;
         case "run": return await Run();
+        case "skills": PrintSkills(); break;
         default:
-            Console.WriteLine("commands: play | render | run   (see docs/TESTING.md)");
+            Console.WriteLine("commands: play | render | run | skills   (see docs/TESTING.md)");
             break;
     }
     return 0;
 }
-catch (ArgumentException e)
+catch (Exception e) when (e is ArgumentException or SkillFormatException or FileNotFoundException)
 {
     Console.Error.WriteLine($"error: {e.Message}");
     return 2;
@@ -51,7 +54,7 @@ void Play()
     var sight = IntOption("--sight", DungeonWorld.DefaultSightRadius);
     var world = new DungeonWorld(ScenarioGenerator.Generate(seed, ExperimentRunner.TierOptions(tier)), seed, sight);
     var agent = new AgentContext(world);
-    var space = StandardActions.Create();
+    var space = StandardActions.Create().WithSkills(LoadSkills(Option("--skills")));
     var interactive = !Console.IsInputRedirected;
     Console.WriteLine($"seed {seed}, tier {tier}, sight {sight}. Reach X. Type 'help' for commands.\n");
     Console.WriteLine(AsciiRenderer.Render(world));
@@ -81,7 +84,7 @@ void Play()
 
 async Task<int> Run()
 {
-    var condition = (Option("--condition") ?? throw new ArgumentException("--condition is required (A or R)")).ToUpperInvariant();
+    var condition = (Option("--condition") ?? throw new ArgumentException("--condition is required (A, R, D or RD)")).ToUpperInvariant();
     if (!ExperimentRunner.Conditions.Contains(condition))
         throw new ArgumentException($"condition '{condition}' is not implemented yet (available: {string.Join(", ", ExperimentRunner.Conditions)})");
     var tier = Option("--tier") ?? "3";
@@ -102,7 +105,7 @@ async Task<int> Run()
     var cacheDir = Path.Combine(settings.CacheDir, provider);
 
     IDecider decider;
-    if (condition == "R")
+    if (!ExperimentRunner.UsesLlm(condition))
     {
         decider = new RuleBasedDecider();
         provider = "none";
@@ -122,7 +125,7 @@ async Task<int> Run()
     }
 
     Console.WriteLine($"condition {condition}, tier {tier}, {seeds.Count} seeds, max {maxDecisions} decisions");
-    Console.WriteLine($"decider {decider.Name}, {(condition == "R" ? "no LLM" : $"{settings.Describe()} provider={provider} cache={mode.ToString().ToLowerInvariant()} ({cacheDir})")}");
+    Console.WriteLine($"decider {decider.Name}, {(!ExperimentRunner.UsesLlm(condition) ? "no LLM" : $"{settings.Describe()} provider={provider} cache={mode.ToString().ToLowerInvariant()} ({cacheDir})")}");
     Console.WriteLine($"output {outDir}\n");
 
     var summary = await ExperimentRunner.RunAsync(new ExperimentConfig(condition, tier, seeds, maxDecisions, outDir,
@@ -138,6 +141,26 @@ async Task<int> Run()
     }
     return 0;
 }
+
+void PrintSkills()
+{
+    var file = Option("--file");
+    var skills = LoadSkills(file ?? "handwritten");
+    foreach (var s in skills)
+    {
+        Console.WriteLine($"{s.Name}({string.Join(", ", s.Params.Select(p => $"{p.Name}: {SkillJson.ParamTypes.First(kv => kv.Value == p.Type).Key}"))})");
+        Console.WriteLine($"  {SkillActions.Describe(s)}\n");
+    }
+    Console.WriteLine(file is null ? HandwrittenSkills.Json() : File.ReadAllText(file));
+}
+
+// "handwritten" = embedded library for condition D; otherwise a JSON file with a list of skills.
+IReadOnlyList<Skill> LoadSkills(string? source) => source switch
+{
+    null or "" or "none" => [],
+    "handwritten" => HandwrittenSkills.Load(),
+    _ => SkillJson.ParseLibrary(File.ReadAllText(source))
+};
 
 // .env is looked up in the working directory, then the repository root.
 string? DefaultEnvFile()

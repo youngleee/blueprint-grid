@@ -6,16 +6,18 @@ action set with verified, parameterized, closed-loop skills. The research plan,
 definitions and current status are in [`docs/PLAN.md`](docs/PLAN.md).
 
 **Status:** environment, agent observation layer, LLM integration (client,
-record/replay cache, budget) and the baseline conditions A (LLM, primitives
-only) and R (hand-written rules) are implemented and tested offline. The skill
-system is next. See the status table in `docs/PLAN.md`.
+record/replay cache, budget), the skill language and interpreter, and the
+conditions A, R, D and RD are implemented and tested offline. First result:
+a hand-written closed-loop skill raises the rule baseline from 87.5 % to
+95.5 % on tier 3 (200 paired seeds, p = 0.005). Next: skill validation and
+LLM skill induction. See the status table in `docs/PLAN.md`.
 
 ## Project structure
 
 | Path | Contents |
 |---|---|
-| `Dungeon/` | Library (no MARS dependency): `Core/` world and generator, `Entities/`, `Agent/` memory, facts, conditions, navigation, action space, deciders, runners, `Llm/` OpenAI client, cache, budget, `Render/` text views |
-| `Dungeon.Cli/` | `play`, `render` and `run` commands |
+| `Dungeon/` | Library (no MARS dependency): `Core/` world and generator, `Entities/`, `Agent/` memory, facts, conditions, navigation, action space, deciders, runners, `Llm/` OpenAI client, cache, budget, `Skills/` skill language, interpreter, hand-written library, `Render/` text views |
+| `Dungeon.Cli/` | `play`, `render`, `run` and `skills` commands |
 | `Dungeon.Tests/` | xUnit tests, incl. 1 000-seed property tests; no test uses the network |
 | `docs/PLAN.md` | Research plan, specification, timeline, implementation status |
 | `docs/TESTING.md` | How to test by hand and how to run experiments |
@@ -41,6 +43,7 @@ dotnet test Dungeon.Tests
 dotnet run --project Dungeon.Cli -- render --seed 1 --tier 3   # full dungeon + hidden parameters
 dotnet run --project Dungeon.Cli -- play   --seed 1 --tier 3   # play as the agent
 dotnet run --project Dungeon.Cli -- run --condition R --tier 3 --seeds 1-20              # rule baseline, no LLM
+dotnet run --project Dungeon.Cli -- run --condition RD --tier 3 --seeds 1-20             # same rules + hand-written skills
 dotnet run --project Dungeon.Cli -- run --condition A --tier 3 --seeds 1-5 --provider stub  # LLM pipeline, offline
 dotnet run --project Dungeon.Cli -- run --condition A --tier 3 --seeds 1-5               # real model (needs key)
 ```

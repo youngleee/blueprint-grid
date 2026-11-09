@@ -27,7 +27,10 @@ before changing behaviour.
     `EpisodeRunner`, `ExperimentRunner`.
   - `Llm/`: `OpenAiClient` (Responses API), `CachingClient` (record/replay),
     `MeteredClient` (call/token caps), `StubLlmClient` (offline), `LlmSettings`.
-- `Dungeon.Cli/`: `play`, `render`, `run`.
+  - `Skills/`: `Skill` model, `SkillJson` (parse/serialize), `SkillInterpreter`
+    (closed-loop execution + contracts), `SkillActions` (skill → action),
+    `HandwrittenSkills` + `Library/handwritten.json` (embedded, conditions D/RD).
+- `Dungeon.Cli/`: `play`, `render`, `run`, `skills`.
 - `Dungeon.Tests/`: xUnit. `LlmFakes.cs` has the scripted client and HTTP stub.
 - `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it;
   it will be replaced by a MARS host for `DungeonWorld`.
@@ -65,6 +68,12 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
 - **Prompts are cache keys.** Any change to prompt text, model, temperature or
   max tokens changes the cache key and makes old recordings unreplayable.
   That is intended; mention it in the commit message.
+- **Skills are data.** A skill is JSON interpreted by `SkillInterpreter`; it is
+  never compiled or executed as code. Conditions are evaluated on a fresh
+  `FactSet` after every step (that is what makes skills closed-loop). Steps go
+  through `ActionSpace.Invoke`, so a skill can only do what the agent can do.
+- **Changing `handwritten.json` changes results.** It is the D/RD reference;
+  rerun R vs RD and update the table in `docs/PLAN.md` §9.1 in the same commit.
 - **No network in tests.** Use `ScriptedLlmClient`, `StubHandler` or
   `StubLlmClient`. Never log or persist the API key.
 - **Clone is deep.** Every new piece of mutable world state must be copied in

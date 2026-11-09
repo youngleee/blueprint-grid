@@ -39,18 +39,23 @@ public sealed class LlmDecider(ILlmClient client, string model, double temperatu
 
 // Hand-written, knowledge-only reference policy (condition R). Not an LLM and never learns:
 // it shows what fixed rules over the same facts and actions achieve under the same budget.
+// If the action space holds calm_guard / open_door (condition RD), the same rules delegate guards
+// and doors to those skills instead of single primitives — the only difference between R and RD,
+// so their gap measures what the skills add.
 public sealed class RuleBasedDecider : IDecider
 {
     public string Name => "rules";
 
     public Task<DecisionRecord> DecideAsync(FactSet f, ActionSpace space, IReadOnlyList<string> history,
         int decisionsLeft, CancellationToken ct = default) =>
-        Task.FromResult(new DecisionRecord(Choose(f, history), null, 0, 0, false, null, null));
+        Task.FromResult(new DecisionRecord(Choose(f, space, history), null, 0, 0, false, null, null));
 
-    private static Decision Choose(FactSet f, IReadOnlyList<string> history)
+    private static Decision Choose(FactSet f, ActionSpace space, IReadOnlyList<string> history)
     {
         Decision D(string a, string reason, params string[] args) => new(a, args, reason);
         var last = history.Count > 0 ? history[^1] : "";
+        var calmSkill = space.Get("calm_guard") is { Kind: ActionKind.Skill };
+        var doorSkill = space.Get("open_door") is { Kind: ActionKind.Skill };
 
         if (f.Exit is not null && !last.StartsWith("go_to(exit) -> unreachable"))
             return D("go_to", "exit known", "exit");
@@ -61,6 +66,8 @@ public sealed class RuleBasedDecider : IDecider
         if (guard is not null)
         {
             var g = guard.Sighting.Id;
+            if (calmSkill)
+                return D("calm_guard", "handle guard with skill", g);
             var food = f.Inventory.FirstOrDefault(i => i.Subtype == "food");
             var coin = f.Inventory.FirstOrDefault(i => i.Subtype == "coin");
             if ((coin ?? food) is { } gift)
@@ -88,6 +95,8 @@ public sealed class RuleBasedDecider : IDecider
         if (door is not null)
         {
             var d = door.Sighting.Id;
+            if (doorSkill)
+                return D("open_door", "open door with skill", d);
             if (!door.Adjacent)
                 return D("go_to", "walk to door", d);
             var key = f.Inventory.FirstOrDefault(i => i.Opens == d);

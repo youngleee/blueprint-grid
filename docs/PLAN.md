@@ -15,6 +15,7 @@ Update this table in the same commit as the work it describes.
 | 4 | Facts, condition evaluator, `go_to` / `explore` | done |
 | 4b | MARS host for `DungeonWorld`, PyGame update | deferred to week 13 (demo only; experiment does not need MARS) |
 | 5 | Action space, LLM client + cache + budget, `choose_action`, conditions A and R, experiment runner | done (offline); live calibration needs API key |
+| 6 | Skill DSL, interpreter, contracts, skills in `A_t`, hand-written library, conditions D and RD | done; first evidence in §9.1 |
 | 6–8 | Skill DSL, interpreter, validator, scenario tester, induction | — |
 | 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
 | 12–15 | Statistics, plots, report | — |
@@ -237,6 +238,7 @@ preconditions, effects and branches, and evaluated against a `FactSet`:
 | `type(x)` | text | `guard`, `locked`, `jammed`, `key`, `food`, … |
 | `dist(x)` | int | Chebyshev distance to last-known position |
 | `count(t)` | int | held items of type or id `t` |
+| `has_key(d)` | bool | holding the key that opens door `d` |
 
 Combine with `and`, `or`, `not`, parentheses or `and(...)`/`or(...)`/`not(...)`;
 compare with `== != < <= > >=` and `in [a, b]`. Parameter names (e.g. `g`) are
@@ -263,8 +265,7 @@ loop until goal | failure | decision budget exhausted:
         maybe Induce()                                                 // §6.3
 ```
 
-**Implemented (week 5)** without the `applicable` filter and `Induce` step,
-which arrive with skills:
+**Implemented (weeks 5–6)** without the `applicable` filter and `Induce` step:
 
 - `ActionSpace` (`Dungeon/Agent/ActionSpace.cs`) is `A_t`: a registry of named
   actions with typed parameters. It starts with the 8 primitives and 2 helpers
@@ -279,7 +280,10 @@ which arrive with skills:
   invalid actions cost a decision (no tick) and appear in the next prompt's
   history, so the model sees its mistakes.
 - Deciders: `LlmDecider` (choose_action prompt) and `RuleBasedDecider`
-  (condition R, §9.1).
+  (conditions R and RD, §9.1).
+- Skills are registered into `ActionSpace` as `ActionKind.Skill` and called
+  through `ActionSpace.Invoke` from inside other skills (not a decision of its
+  own); only the outer call counts as a decision.
 
 ### 6.2 Built-in helpers (not counted as learned skills)
 
@@ -293,9 +297,13 @@ step.
   for items and the exit.
 - `explore()`: walk to the nearest frontier cell (known passable cell next to an
   unknown cell).
+- `retreat(id, distance)` (added week 6): walk over known cells until at least
+  `distance` (Chebyshev) from the entity's last-known position. Stepping out
+  of a guard's detection range resets it to `idle` with full patience (§5.4),
+  so this is how a closed-loop skill recovers from a refusal.
 
 Each helper returns `arrived`, `interrupted`, `unreachable` or `episode_over`
-plus the ticks used. They **interrupt** and return control after a failed move,
+plus the ticks used. `go_to` and `explore` **interrupt** and return control after a failed move,
 when a new entity or the exit comes into sight, when a visible guard becomes
 `alert`, or after 80 ticks. This keeps every decision-relevant moment a
 decision of the LLM. One helper call costs one decision regardless of ticks.
@@ -338,9 +346,18 @@ reason.
 
 ### 6.5 Runtime contract checks
 
-- Precondition false → skill not offered.
-- Effect false after execution → counted as `skill_effect_failure`; agent gets
-  the outcome in its next facts.
+Implemented in `Dungeon/Skills/SkillInterpreter.cs`:
+
+- Precondition false → `invalid`, no tick, message `precondition not met: <cond>`.
+  Skills are still *listed* in the prompt with their preconditions (the planned
+  `applicable` filter of §6.1 is not applied yet), so the LLM can see why a
+  skill is not usable.
+- Body runs to the end, or stops on `fail`, an invalid step, a failed nested
+  skill, the episode ending, or a limit (40 calls, 120 ticks, nesting depth 3).
+- Effect checked on fresh facts afterwards → `success`, or `failed` with
+  `effect not reached: <cond>`. Counted as `skill_effect_fail` (§9.4).
+- The outcome lists every step the skill took (nested skills indented); it is
+  in the trace (`skill_steps`) and its summary is the next `last action`.
 
 ### 6.6 Library persistence
 
@@ -351,40 +368,75 @@ seed, LLM call id), test pass rate, usage count, success count.
 
 JSON, interpreted in C#. LLM-generated code is never executed directly.
 
-### 7.1 Grammar (informal)
+### 7.1 Grammar (implemented: `Dungeon/Skills/SkillJson.cs`)
 
 ```
-Skill     := { name, params: [Param], pre: [Cond], effect: [Cond], body: [Stmt] }
-Param     := { name, type ∈ {guard, door, trap, item, cell} }
-Stmt      := Call | If | Until | Repeat | Fail
-Call      := { call: ActionName, args: [Expr] }
-If        := { if: Cond, then: [Stmt], else: [Stmt]? }
-Until     := { until: Cond, max: int, do: [Stmt] }
-Repeat    := { repeat: int, do: [Stmt] }
+Skill     := { name, description?, params: [Param], pre: [Cond], effect: [Cond], body: [Stmt]+ }
+Param     := { name, type ∈ {guard, door, item, target, dir, int} }
+Stmt      := Call | If | Until | Repeat | Fail           (exactly one key per object)
+Call      := { call: ActionName, args?: [Arg] }          any action in A_t, incl. other skills
+If        := { if: Cond, then: [Stmt], else?: [Stmt] }
+Until     := { until: Cond, max: int ≥ 1, do: [Stmt]+ }  checks Cond before each pass
+Repeat    := { repeat: int ≥ 1, do: [Stmt]+ }
 Fail      := { fail: string }
-Cond      := predicate expression over facts, e.g.
-             "state(guard) == alert", "has(food)", "dist(guard) <= 2",
-             "not(...)", "and(...)", "or(...)"
-Expr      := param name | literal | helper ("away_from(guard, 3)", "nearest(item_type)")
+Cond      := condition string, language of §5.6 (parameters resolved by binding)
+Arg       := param name | literal (id, number, "none", "exit")
+           | pos(x)     → two args: x and y of x's last-known position
+           | held(t)    → id of a held item of type or id t
+           | key_for(d) → id of the held key that opens door d
 ```
 
-### 7.2 Example
+Names are lowercase identifiers; unknown keys, empty bodies, `max` < 1,
+unknown parameter types, unknown argument functions and malformed conditions
+are rejected with a path-specific message (e.g. `skill.body[2].then[0].max:
+expected a whole number ≥ 1`), which week 8 feeds back to the LLM. The parser
+checks *shape*; whether calls name real actions with the right argument count
+is checked at run time now and by the validator in week 7.
+
+Skills become actions of `A_t` through `SkillActions.ToAction`. The LLM is
+shown signature, description, `Needs:` (pre) and `Achieves:` (effect) — never
+the body.
+
+### 7.2 Hand-written library (condition D, `Dungeon/Skills/Library/handwritten.json`)
+
+`open_door(d)`: walk next to `d`; until open (max 6): key if held, else
+lockpick if locked, else push if jammed, else `fail`.
+
+`calm_guard(g)` — the skill that answers R's failure mode:
 
 ```json
 {
-  "name": "distract_guard",
-  "params": [{"name": "g", "type": "guard"}, {"name": "it", "type": "item"}],
-  "pre":    ["visible(g)", "has(it)", "state(g) != hostile"],
-  "effect": ["state(g) in [distracted, bribed, idle]"],
+  "name": "calm_guard",
+  "params": [{ "name": "g", "type": "guard" }],
+  "pre": ["known(g)", "state(g) != hostile"],
+  "effect": ["state(g) in [calm, bribed, distracted]"],
   "body": [
-    {"call": "go_to", "args": ["g", 2]},
-    {"if": "state(g) == alert",
-     "then": [{"call": "throw", "args": ["it", "away_from(g, 3)"]}],
-     "else": [{"call": "talk", "args": ["g"]}]},
-    {"until": "state(g) in [distracted, idle]", "max": 3, "do": [{"call": "wait"}]}
+    { "if": "has(food) and visible(g) and dist(g) <= 3", "then": [
+      { "call": "throw", "args": ["held(food)", "pos(g)"] } ] },
+    { "until": "state(g) in [calm, bribed, distracted]", "max": 3, "do": [
+      { "until": "dist(g) <= 2", "max": 3, "do": [{ "call": "go_to", "args": ["g", 2] }] },
+      { "call": "talk", "args": ["g"] },
+      { "if": "state(g) == alert", "then": [{ "call": "retreat", "args": ["g", 3] }] } ] },
+    { "if": "has(coin) and not state(g) in [calm, bribed, distracted]", "then": [
+      { "until": "dist(g) <= 1", "max": 3, "do": [{ "call": "go_to", "args": ["g", 1] }] },
+      { "call": "give", "args": ["held(coin)", "g"] } ] }
   ]
 }
 ```
+
+Design notes, each learned from a failing run, not assumed:
+
+1. *Throw from range first.* Food thrown from ≤ 3 cells distracts without
+   spending patience; giving it needs adjacency, where a refusal plus the step
+   away can exhaust patience (observed: give → refuse → retreat → caught).
+2. *Retreat after each refusal.* Leaving detection range resets patience; this
+   is the closed loop that a fixed sequence lacks.
+3. *Coin last.* Adjacent bribes are the riskiest attempt; used only when
+   throwing and talking failed.
+
+Over 200 tier-3 seeds the same skill took **25 distinct step paths**
+(e.g. `throw`; `talk`; `talk > retreat > go_to > talk`), all from one
+definition, because each branch depends on the guard's actual response.
 
 ### 7.3 Macro variant (ablation E)
 
@@ -453,12 +505,13 @@ arguments are then validated by `ActionSpace`.
 |---|---|---|---|---|---|
 | **A** | Primitives only | no | — | — | implemented |
 | **R** | Hand-written rules, no LLM | no | — | — | implemented |
+| **RD** | R's rules + hand-written library | no | fixed | DSL | implemented |
 | **B** | Induction, reset each episode | yes | no | DSL | — |
 | **C** | Induction, persistent library | yes | yes | DSL | — |
 | **E** | Macro ablation | yes | yes | macro (§7.3) | — |
-| D (could) | Hand-written library | no | fixed | DSL | — |
+| **D** | LLM + hand-written library | no | fixed | DSL | implemented |
 
-Must: A, C, E. Should: B. Could: D.
+Must: A, C, E. Should: B. D and RD are cheap references and are implemented.
 
 **R** (added in week 5) is a fixed if-then policy over the same facts and the
 same action set (`RuleBasedDecider`): go to the exit if known; bribe/feed/talk
@@ -479,6 +532,27 @@ R's guard failures are the open-loop pattern the project targets: it repeats
 that switches strategy on refusal should avoid exactly this. Consequence for
 the claim: **C must be compared with R, not only with A**; if C does not beat
 R, that is reported.
+
+**RD** (week 6) is R with one change: when `calm_guard` / `open_door` are in
+`A_t`, the same rules call them instead of single primitives. The R–RD gap
+therefore isolates what the skills add, with no LLM involved. Seeds 1–200,
+D_max = 40, same seeds for both (paired):
+
+| Tier | R | RD | only R wins | only RD wins | McNemar (exact) | Mean decisions R → RD |
+|---|---|---|---|---|---|---|
+| 1 | 83.5 % | 93.0 % | 7 | 26 | p = 0.001 | 11.7 → 10.6 |
+| 2 | 100 % | 100 % | 0 | 0 | — | 19.8 → 13.2 |
+| 3 | 87.5 % | 95.5 % | 7 | 23 | p = 0.005 | 26.6 → 22.6 |
+
+This is the first evidence that a closed-loop, parameterized skill raises
+success under the same decision budget (§3 property 6) — here with a
+hand-written skill. Remaining RD failures (8/200 on tier 3) are a talk refusal
+with patience already low before the skill starts. Whether an LLM can
+*induce* such a skill (C) is the open question for weeks 7–9.
+
+Caveat: the first, untested version of `calm_guard` was not better than R
+(85 % vs 88 % on tier 3). Skill quality matters as much as skill structure;
+week 7's scenario tests exist to catch exactly that.
 
 ### 9.2 Seeds and phases
 
@@ -502,7 +576,9 @@ R, that is reported.
 
 Implemented columns of `metrics.csv` (`EpisodeResult`): `condition, tier,
 seed, success, end_reason, decisions, ticks, invalid_actions, parse_errors,
-llm_calls, cache_hits, tokens_in, tokens_out, action_set_size`. Each run
+llm_calls, cache_hits, tokens_in, tokens_out, action_set_size, library_size,
+skill_invocations, skill_successes, skill_effect_fail, skill_pre_fail`.
+Trace lines also carry `kind` (primitive / helper / skill) and `skill_steps`. Each run
 directory also has `run.json` (configuration, decider, model, cache mode,
 budget, summary; never the API key) and `traces/seed_N.jsonl` (per decision:
 facts, action, args, reason, outcome, raw reply, tokens).
@@ -514,10 +590,9 @@ Planned columns, added with skills:
 | `success` | primary |
 | `decisions_used`, `ticks_used` | efficiency |
 | `llm_calls_choose`, `llm_calls_induce`, `tokens_in/out` | cost; should fall over episodes in C |
-| `library_size`, `max_skill_depth` | expansion over time |
+| `max_skill_depth` | expansion over time |
 | `skills_induced`, `skills_rejected` (+ reason) | induction quality |
 | `skill_invocations`, `skill_reuse_new_seed` | reuse / transfer |
-| `skill_pre_fail`, `skill_effect_fail` | robustness under stochasticity |
 | `wrong_skill_selected` | skill shadowing indicator |
 | `failure_reason` | hostile / trap / budget / stuck |
 
@@ -542,6 +617,7 @@ Planned columns, added with skills:
 - H2: C > E on held-out success; gap larger on seeds with high outcome variance.
 - H3: In C, LLM calls per episode decrease across training episodes.
 - H4: C ≥ R on held-out tier-3 success (equal D_max).
+- Reference (week 6, no LLM): RD > R on tier 1 and 3 — confirmed offline, §9.1.
 
 A negative result for any hypothesis is reported as such.
 
@@ -580,14 +656,17 @@ Dungeon/                  class library, no MARS dependency
   Llm/MeteredClient.cs    ✓ call / token caps
   Llm/StubLlmClient.cs    ✓ offline pipeline stub
   Llm/LlmSettings.cs      ✓ environment / .env settings
-  Skills/Skill.cs         model + JSON (de)serialization
-  Skills/Interpreter.cs   executes DSL, returns ticks + outcome
+  Skills/Skill.cs         ✓ skill model (params, pre, effect, body)
+  Skills/SkillJson.cs     ✓ JSON parser / serializer, path-specific errors
+  Skills/SkillInterpreter.cs ✓ closed-loop execution, contracts, limits
+  Skills/SkillActions.cs  ✓ skill → action of A_t, LLM-facing description
+  Skills/HandwrittenSkills.cs + Library/handwritten.json ✓ condition D / RD library
   Skills/Validator.cs     static checks
   Skills/ScenarioTester.cs generated micro-room tests
   Skills/Library.cs       registry + persistence
   Llm/Prompts (induce_skill)
   Agent/LlmAgent: induction trigger
-Dungeon.Cli/              ✓ play / render / run
+Dungeon.Cli/              ✓ play / render / run / skills
 Dungeon.Tests/            ✓ xUnit
 Visualization/            PyGame (to be extended: fog of war, entities, skill log)
 docs/PLAN.md, docs/TESTING.md ✓
@@ -619,7 +698,10 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Cache / budget | record, replay, live, miss error, key covers every field; caps; cache hits free | unit |
 | Prompt / parser | lists every action, no hidden parameters over 50 seeds, history bound; reply shapes | unit, property |
 | Runner | budgets, invalid / unparseable handling, hostile end, outputs; **replay reproduces a recorded run exactly** | integration |
-| Interpreter (planned) | each statement type; `max` bound enforced; failure propagation | unit |
+| Skill JSON | every statement and argument form, round trip, one test per rejection rule with exact location | unit |
+| Interpreter | each statement type, branches follow fresh facts, `until` early stop and max, `fail`, invalid steps, argument functions, nested skills and depth bound, step / tick limits, episode end | unit |
+| Hand-written skills | strategy switch on failure, retreat-and-retry, throw from range, coin, each door tool, ≥ 3 distinct paths for one skill | unit |
+| Skill conditions | RD beats R on 40 tier-1 seeds; skill metrics and trace steps recorded | integration |
 | Validator (planned) | each rejection rule has a failing fixture | unit |
 | ScenarioTester (planned) | known-good skill passes; known-bad skill fails | unit |
 
@@ -664,7 +746,8 @@ reported as results.
 | Cheap model produces invalid DSL | high | medium | JSON mode, grammar in prompt, 2 format examples, feedback loop (3 attempts), validator messages specific |
 | Induced skills are trivial macros anyway | medium | high | Closed-loop is a validator requirement for condition C (§3 property 2); E quantifies the difference |
 | A already solves everything | medium | high | Calibrate D_max in week 5; stochastic entities punish open-loop play |
-| Simple rules (R) already solve everything | medium | high | Offline R is 86 % on tier 3; its failures are open-loop guard retries. Report C vs. R honestly (H4); if needed, widen guard trait ranges and report the change |
+| Simple rules (R) already solve everything | medium | high | R is 87.5 % on tier 3 (200 seeds); RD with a closed-loop skill is 95.5 % (p = 0.005), so there is headroom skills can use. Report C vs. R honestly (H4) |
+| LLM-induced skills are worse than hand-written ones | high | high | The first hand-written `calm_guard` was itself no better than R; scenario tests (week 7) must catch weak skills before registration; RD is the reference for what a good skill achieves |
 | Environment work overruns | high | high | Guard + Door only until week 10; checkpoint at week 8 |
 | API cost overrun | low | medium | Hard caps, cache, cost estimate in week 5 |
 | Non-reproducible results | medium | high | Record/replay cache; pinned snapshot; seeds in every CSV row |

@@ -1,0 +1,43 @@
+[
+  {
+    "name": "calm_guard",
+    "description": "Get past a guard without risking its patience: throw food from outside its detection range; else talk from 2 cells and step back after each refusal; adjacent bribes only as a last resort",
+    "params": [{ "name": "g", "type": "guard" }],
+    "pre": ["known(g)", "state(g) != hostile"],
+    "effect": ["state(g) in [calm, bribed, distracted]"],
+    "body": [
+      { "if": "has(food) and visible(g) and dist(g) <= 3", "then": [
+        { "call": "throw", "args": ["held(food)", "pos(g)"] }
+      ] },
+      { "until": "state(g) in [calm, bribed, distracted]", "max": 3, "do": [
+        { "until": "dist(g) <= 2", "max": 3, "do": [{ "call": "go_to", "args": ["g", 2] }] },
+        { "call": "talk", "args": ["g"] },
+        { "if": "state(g) == alert", "then": [{ "call": "retreat", "args": ["g", 3] }] }
+      ] },
+      { "if": "has(coin) and not state(g) in [calm, bribed, distracted]", "then": [
+        { "until": "dist(g) <= 1", "max": 3, "do": [{ "call": "go_to", "args": ["g", 1] }] },
+        { "call": "give", "args": ["held(coin)", "g"] }
+      ] }
+    ]
+  },
+  {
+    "name": "open_door",
+    "description": "Open a closed door: use its key if held, else a lockpick, else push; retry a few times",
+    "params": [{ "name": "d", "type": "door" }],
+    "pre": ["known(d)", "state(d) == closed"],
+    "effect": ["state(d) == open"],
+    "body": [
+      { "until": "adjacent(d)", "max": 3, "do": [{ "call": "go_to", "args": ["d", 1] }] },
+      { "until": "state(d) == open", "max": 6, "do": [
+        { "if": "has_key(d)", "then": [{ "call": "use", "args": ["key_for(d)", "d"] }],
+          "else": [
+            { "if": "type(d) == locked and has(lockpick)", "then": [{ "call": "use", "args": ["held(lockpick)", "d"] }],
+              "else": [
+                { "if": "type(d) == jammed", "then": [{ "call": "use", "args": ["none", "d"] }],
+                  "else": [{ "fail": "locked and no key or lockpick" }] }
+              ] }
+          ] }
+      ] }
+    ]
+  }
+]

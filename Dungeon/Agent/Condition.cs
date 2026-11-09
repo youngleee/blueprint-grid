@@ -156,6 +156,7 @@ public static class Predicates
             ["type"] = (1, ValueType.Text),      // guard | locked | jammed | key | food | ...
             ["dist"] = (1, ValueType.Int),       // Chebyshev distance to last-known position
             ["count"] = (1, ValueType.Int),      // number of held items of a type
+            ["has_key"] = (1, ValueType.Bool),   // holding the key that opens door x
         };
 
     public static object? Evaluate(string name, IReadOnlyList<string> args, FactSet f)
@@ -179,6 +180,7 @@ public static class Predicates
             "dist" when a == "exit" => f.Exit is { } x ? f.Position.Chebyshev(x) : null,
             "dist" => Entity(a)?.Distance,
             "count" => f.Inventory.Count(s => s.Subtype == a || s.Id == a),
+            "has_key" => f.Inventory.Any(s => s.Opens == a),
             _ => throw new FormatException($"unknown predicate '{name}'")
         };
     }

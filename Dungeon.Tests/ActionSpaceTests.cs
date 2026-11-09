@@ -12,11 +12,11 @@ public class ActionSpaceTests
             items: items, sightRadius: 2));
 
     [Fact]
-    public void Standard_space_has_8_primitives_and_2_helpers()
+    public void Standard_space_has_8_primitives_and_3_helpers()
     {
         var space = StandardActions.Create();
         Assert.Equal(8, space.Actions.Count(a => a.Kind == ActionKind.Primitive));
-        Assert.Equal(["go_to", "explore"], space.Actions.Where(a => a.Kind == ActionKind.Helper).Select(a => a.Name));
+        Assert.Equal(["go_to", "explore", "retreat"], space.Actions.Where(a => a.Kind == ActionKind.Helper).Select(a => a.Name));
     }
 
     [Fact]

@@ -128,7 +128,7 @@ public class EpisodeRunnerTests
         Assert.Equal("exit", r.EndReason);
         Assert.Equal(trace.Count, r.Decisions);
         Assert.Equal(0, r.LlmCalls);
-        Assert.Equal(10, r.ActionSetSize);
+        Assert.Equal(11, r.ActionSetSize);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class EpisodeRunnerTests
     [Fact]
     public void Csv_row_matches_header()
     {
-        var r = new EpisodeResult("A", "tier3", 1, true, "caught by guard_1, oops", 3, 9, 0, 0, 3, 0, 300, 30, 10);
+        var r = new EpisodeResult("A", "tier3", 1, true, "caught by guard_1, oops", 3, 9, 0, 0, 3, 0, 300, 30, 12, 2, 1, 1, 0, 0);
         Assert.Equal(EpisodeResult.CsvHeader.Split(',').Length, r.ToCsv().Split(',').Length - 1); // quoted comma
         Assert.Contains("\"caught by guard_1, oops\"", r.ToCsv());
     }

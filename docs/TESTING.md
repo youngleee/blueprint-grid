@@ -24,7 +24,10 @@ No automated test uses the network or an API key.
 dotnet run --project Dungeon.Cli -- render --seed 1 --tier 3
 
 # Play as the agent (only what the agent can see is shown)
-dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3 [--sight 3]
+dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3 [--sight 3] [--skills handwritten|FILE]
+
+# Show a skill library: signatures, what the LLM is told, and the JSON
+dotnet run --project Dungeon.Cli -- skills [--file FILE]
 
 # Scripted run: pipe commands, output is reproducible for the same seed
 printf 'state\nw\nw\nuse none door_1\n' | dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3
@@ -37,9 +40,13 @@ validation as the LLM's choices. Command groups:
 
 - **Primitives** (`move`, `wait`, `look`, `pick_up`, `talk`, `give`, `throw`,
   `use`): one tick each, none if `invalid`.
-- **Helpers** (`go_to <id|exit> [distance]` — `goto` also works — and
-  `explore`): several ticks; they stop early when something new comes into
-  sight, a move fails, or a guard turns alert.
+- **Helpers** (`go_to <id|exit> [distance]` — `goto` also works —, `explore`,
+  `retreat <id> <distance>`): several ticks; `go_to` and `explore` stop early
+  when something new comes into sight, a move fails, or a guard turns alert.
+- **Skills** (only with `--skills`): `calm_guard <guard>`, `open_door <door>`.
+  One decision; the output lists every step the skill took. A false
+  precondition is `invalid` with the condition named; a missed effect is
+  `failed` with the condition named.
 - **Inspect** (free, no tick): `facts` (exactly what the LLM will see),
   `check <condition>` (evaluate a condition against the facts), `actions`,
   `map`, `state`, `reveal`, `debug`. `reveal` and `debug` show hidden
@@ -78,6 +85,11 @@ Use `render` first to find the entity ids and positions for a seed.
 | 20 | Last action reports the helper | `explore`, then `facts` | `last action: explore -> …`, not a single move |
 | 21 | Conditions | `check has(key) and state(door_2) == closed`, `check state(guard_1)` | `true`/`false`; second is an error (needs a comparison) |
 | 22 | Unseen ids are rejected | `talk guard_1` before seeing the guard | `invalid: unknown guard 'guard_1' (known: none)` — same as for a made-up id |
+| 23 | Retreat resets a guard | get a guard `alert`, `retreat guard_1 3`, `debug` | guard `idle`, patience full |
+| 24 | Skills are actions | `play --skills handwritten`, `actions` | lists `calm_guard(g)` and `open_door(d)` |
+| 25 | Skill precondition | `play --seed 1 --tier 3 --skills handwritten`: `open_door door_1` at the start; later `open_door` on a door you have opened | first: `invalid: unknown door 'door_1'` (not seen yet); second: `invalid: precondition not met: state(d) == closed` |
+| 26 | calm_guard adapts | `play --tier 1 --skills handwritten` for seeds 3, 5, 8: `explore` until the guard is spotted, `calm_guard guard_1` | `success`; the step list differs per seed (e.g. one `talk`, or `go_to` then `talk`) |
+| 27 | open_door picks the tool | `play --seed 1 --tier 2 --skills handwritten`: `open_door door_1` (jammed), pick up `key_1`, `open_door door_2` (locked) | first shows `use(none,door_1)` pushes, second `use(key_1,door_2)` |
 
 Probabilistic cases (7, 10–12) depend on the seed: the same seed and the same
 command sequence always give the same outcome; a different seed may not.
@@ -90,7 +102,7 @@ dotnet run --project Dungeon.Cli -- run --condition A|R [options]
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--condition` | required | `A` LLM with primitives + helpers · `R` hand-written rules, no LLM |
+| `--condition` | required | `A` LLM, primitives + helpers · `R` rules, no LLM · `D` LLM + hand-written skills · `RD` rules + hand-written skills |
 | `--tier` | `3` | `1`, `2`, `3` |
 | `--seeds` | `1-20` | `1-20`, `1,4,9`, `5` |
 | `--max-decisions` | `40` | decision budget D_max per episode |
@@ -111,7 +123,9 @@ Output directory:
 
 | # | Case | Command | Expected |
 |---|---|---|---|
-| R1 | Rule baseline | `run --condition R --tier 3 --seeds 1-50` | ~86 % success; failures are `caught by guard_1` or `decision_budget` |
+| R1 | Rule baseline | `run --condition R --tier 3 --seeds 1-200` | 175/200; failures are `caught by guard_1` or `decision_budget` |
+| R1b | Skills help the rules | `run --condition RD --tier 3 --seeds 1-200` | 191/200, fewer decisions than R; `skill_invocations` > 0 in `metrics.csv` |
+| R1c | Skill steps in traces | open any `traces/seed_N.jsonl` from R1b | skill lines have `"kind":"skill"` and a `skill_steps` list |
 | R2 | Offline LLM pipeline | `run --condition A --provider stub --tier 3 --seeds 1-5` | runs, writes outputs; low success is expected (the stub only explores) |
 | R3 | Replay is identical | R2, then the same with `--llm replay` | same `metrics.csv` except `cache_hits`; no network |
 | R4 | Replay miss | `--llm replay` with seeds never recorded | stops with `replay cache miss`, `run.json` still written, exit code 1 |

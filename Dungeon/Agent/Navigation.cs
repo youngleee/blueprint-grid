@@ -54,6 +54,52 @@ public static class Navigation
         return GoTo(ctx, target.Value, d, d == 0 ? id : $"{id},{d}", maxTicks);
     }
 
+    // retreat: walk away from a remembered entity until at least `distance` cells (Chebyshev) from it.
+    // Steps to the reachable known cell that maximises distance, so it never walks past the entity.
+    public static HelperResult Retreat(AgentContext ctx, string id, int distance, int maxTicks = DefaultMaxTicks)
+    {
+        var name = $"retreat({id},{distance})";
+        if (ctx.KnownPosition(id) is not { } from)
+            return new(name, HelperStatus.Unreachable, 0, $"{id} is not known");
+        var ticks = 0;
+        while (true)
+        {
+            if (ctx.IsOver)
+                return new(name, HelperStatus.EpisodeOver, ticks, $"episode {ctx.World.Status.ToString().ToLowerInvariant()}");
+            if (ctx.Position.Chebyshev(from) >= distance)
+                return new(name, HelperStatus.Arrived, ticks, $"at {ctx.Position}, distance {ctx.Position.Chebyshev(from)} from {id}");
+            if (ticks >= maxTicks)
+                return new(name, HelperStatus.Interrupted, ticks, "tick limit reached");
+
+            var goals = ReachableKnown(ctx).Where(c => c.Chebyshev(from) >= distance).ToHashSet();
+            var step = FirstStep(ctx, goals);
+            if (step is null)
+                return new(name, HelperStatus.Unreachable, ticks, $"no known cell {distance} away from {id}");
+            var result = ctx.Do(w => w.Move(step.Value.Direction));
+            ticks++;
+            if (result.Status != ActionStatus.Success)
+                return new(name, HelperStatus.Interrupted, ticks, $"blocked: {result.Message}");
+        }
+    }
+
+    private static IEnumerable<Cell> ReachableKnown(AgentContext ctx)
+    {
+        var seen = new HashSet<Cell> { ctx.Position };
+        var queue = new Queue<Cell>();
+        queue.Enqueue(ctx.Position);
+        while (queue.Count > 0)
+        {
+            var c = queue.Dequeue();
+            yield return c;
+            foreach (var d in Enum.GetValues<Direction>())
+            {
+                var n = c.Step(d);
+                if (BelievedPassable(ctx, n) && seen.Add(n))
+                    queue.Enqueue(n);
+            }
+        }
+    }
+
     // explore: repeatedly walk to the nearest frontier until something new is seen.
     public static HelperResult Explore(AgentContext ctx, int maxTicks = DefaultMaxTicks)
     {

@@ -30,6 +30,9 @@ public sealed class AgentContext
     public long Tick => World.Tick;
     public bool IsOver => World.Status != EpisodeStatus.Running;
 
+    // Number of skills currently executing (nested calls). Bounded by the interpreter.
+    public int SkillDepth { get; internal set; }
+
     // One primitive, used by helpers and (later) skills. Does not count as a decision.
     public ActionResult Do(Func<DungeonWorld, ActionResult> action)
     {
