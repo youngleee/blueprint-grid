@@ -29,9 +29,17 @@ printf 'state\nw\nw\nuse none door_1\n' | dotnet run --project Dungeon.Cli -- pl
 ```
 
 Tiers: `1` one guard · `2` locked + jammed door · `3` all three.
-In `play`, type `help` for commands. `map`, `reveal`, `state`, `debug` are free
-(no tick). `reveal` and `debug` show hidden information — the agent never gets
-these.
+In `play`, type `help` for commands. Command groups:
+
+- **Primitives** (`move`, `wait`, `look`, `pick_up`, `talk`, `give`, `throw`,
+  `use`): one tick each, none if `invalid`.
+- **Helpers** (`goto <id|exit> [distance]`, `explore`): several ticks; they stop
+  early when something new comes into sight, a move fails, or a guard turns
+  alert.
+- **Inspect** (free, no tick): `facts` (exactly what the LLM will see),
+  `check <condition>` (evaluate a condition against the facts), `map`, `state`,
+  `reveal`, `debug`. `reveal` and `debug` show hidden information — the agent
+  never gets these.
 
 Map rows are labelled with `y`, the header gives the `x` range; `throw` takes
 absolute `x y`.
@@ -56,6 +64,13 @@ Use `render` first to find the entity ids and positions for a seed.
 | 12 | Coin bribes permanently | `give coin_N guard_1` | stays `bribed` |
 | 13 | Episode over | reach `X`, then `e` | `invalid` |
 | 14 | Chances vary per seed | `render` seeds 1–5 | different calm/food/pick/push values |
+| 15 | Facts show only what was seen | `facts` at start, compare with `reveal` | only in-sight entities; exit "not found yet" |
+| 16 | Stale memory | see a guard go `alert`, step out of sight, `facts` vs `debug` | facts still say `alert`, debug says `idle` |
+| 17 | Explore stops on discovery | `explore` repeatedly | each call ends with `spotted <id>` or `nothing left to explore` |
+| 18 | goto stops next to doors | `goto door_N` | ends adjacent to the door, not on it |
+| 19 | goto through unknown | `goto exit` before seeing it | `unreachable`, tick unchanged |
+| 20 | Last action reports the helper | `explore`, then `facts` | `last action: explore -> …`, not a single move |
+| 21 | Conditions | `check has(key) and state(door_2) == closed`, `check state(guard_1)` | `true`/`false`; second is an error (needs a comparison) |
 
 Probabilistic cases (7, 10–12) depend on the seed: the same seed and the same
 command sequence always give the same outcome; a different seed may not.

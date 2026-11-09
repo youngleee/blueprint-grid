@@ -1,4 +1,5 @@
-﻿using Dungeon.Core;
+﻿using Dungeon.Agent;
+using Dungeon.Core;
 using Dungeon.Render;
 
 // Usage:
@@ -34,6 +35,7 @@ switch (command)
     case "play":
     {
         var world = new DungeonWorld(ScenarioGenerator.Generate(seed, options), seed, sight);
+        var agent = new AgentContext(world);
         var interactive = !Console.IsInputRedirected;
         Console.WriteLine($"seed {seed}, tier {tier}, sight {sight}. Reach X. Type 'help' for commands.\n");
         Console.WriteLine(AsciiRenderer.Render(world));
@@ -48,7 +50,7 @@ switch (command)
                 break;
             if (!interactive)
                 Console.WriteLine($"\n> {line}");
-            var result = CommandInterpreter.Execute(world, line);
+            var result = CommandInterpreter.Execute(agent, line);
             Console.WriteLine(result.Output);
             if (result.Quit)
                 break;

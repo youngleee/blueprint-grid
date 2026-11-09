@@ -12,7 +12,8 @@ Update this table in the same commit as the work it describes.
 | 2 | World core: Rng, map generator, visibility, turn-based world | done |
 | 3 | Guard, door, items, all primitives, solvable scenario tiers | done |
 | — | CLI `play` / `render` + `docs/TESTING.md` (manual testing aid) | done |
-| 4 | Facts, condition evaluator, `go_to` / `explore`, MARS host, PyGame | next |
+| 4 | Facts, condition evaluator, `go_to` / `explore` | done |
+| 4b | MARS host for `DungeonWorld`, PyGame update | next |
 | 5 | LLM client + cache, condition A, D_max calibration | — |
 | 6–8 | Skill DSL, interpreter, validator, scenario tester, induction | — |
 | 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
@@ -198,22 +199,55 @@ costs 1 decision.
 
 ### 5.6 Observation → facts
 
-Each step the agent receives a symbolic fact list, never the raw map:
+Each decision the agent receives a fact list built only from what it has seen
+(`Dungeon/Agent/FactSet.cs`), never the raw map. Example (seed 1, tier 3,
+after one `explore`):
 
 ```
-at(agent, 12, 7)
-visible(guard_1, 14, 7)  state(guard_1) = alert  dist(guard_1) = 2
-visible(door_2, 12, 4)   type(door_2) = locked
-has(food)  has(lockpick)
-seen_exit = false
-explored_rooms = 2/5   frontier = [(15,9), (10,3)]
-last_action = talk(guard_1) -> no_change
+tick 27, position (14,18), exit not found yet
+inventory: key_1 (key, opens door_2)
+in sight:
+  door_1 jammed door at (11,18), closed, distance 3
+remembered (out of sight):
+  food_2 food on floor at (16,22), distance 4, last seen tick 25
+unexplored frontier: 4 cells, nearest reachable at distance 2
+last action: explore -> interrupted after 9 ticks: spotted door_1
 ```
+
+- **Agent memory** (`AgentMemory`) stores the last-known state of every entity
+  seen. It is *not* updated when an entity changes out of sight, so beliefs can
+  be stale (e.g. a guard remembered `alert` that has since calmed down).
+- All agent-side code goes through `AgentContext`: `Do` executes a primitive
+  and updates memory; `Decide` wraps one whole decision and records its outcome
+  as `last action`.
+- A property test over 1 000 seeds checks the facts never mention an entity the
+  agent has not seen.
+
+**Condition language** (`Dungeon/Agent/Condition.cs`), used for skill
+preconditions, effects and branches, and evaluated against a `FactSet`:
+
+| Predicate | Type | Meaning |
+|---|---|---|
+| `visible(x)` | bool | entity or `exit` in sight now |
+| `known(x)` | bool | seen at some point (or held) |
+| `adjacent(x)` | bool | orthogonally adjacent |
+| `has(x)` | bool | holding item id `x` or any item of type `x` |
+| `at_exit()` | bool | standing on the exit |
+| `state(x)` | text | last-known state: guard `idle/alert/calm/distracted/bribed/hostile`, door `open/closed`, item `held/on_floor` |
+| `type(x)` | text | `guard`, `locked`, `jammed`, `key`, `food`, … |
+| `dist(x)` | int | Chebyshev distance to last-known position |
+| `count(t)` | int | held items of type or id `t` |
+
+Combine with `and`, `or`, `not`, parentheses or `and(...)`/`or(...)`/`not(...)`;
+compare with `== != < <= > >=` and `in [a, b]`. Parameter names (e.g. `g`) are
+resolved through bindings at evaluation time. Facts about unknown entities make
+a condition false, never an error. Malformed conditions are rejected at parse
+time with a message the induction loop can feed back to the LLM.
 
 *Why facts:* keeps prompts small (cheap model), makes preconditions checkable
 by code, and stops the LLM from doing pathfinding — navigation is handled by
-the built-in helper `go_to(target)` (§6.2), so the research question is about
-interaction skills, not path planning.
+the built-in helpers (§6.2), so the research question is about interaction
+skills, not path planning.
 
 ## 6. Agent design
 
@@ -231,11 +265,26 @@ loop until goal | failure | decision budget exhausted:
 
 ### 6.2 Built-in helpers (not counted as learned skills)
 
-- `go_to(entity|cell)`: A* on *known* cells.
-- `explore()`: move to nearest frontier.
+Implemented in `Dungeon/Agent/Navigation.cs`. Both plan by BFS (uniform step
+cost, so shortest) over cells the agent *believes* passable: known floor, not a
+remembered closed door, not a remembered blocking guard. They re-plan every
+step.
+
+- `go_to(id | exit, [distance])`: walk until within Manhattan `distance` of the
+  last-known position. Default 1 for doors and guards (stand next to them), 0
+  for items and the exit.
+- `explore()`: walk to the nearest frontier cell (known passable cell next to an
+  unknown cell).
+
+Each helper returns `arrived`, `interrupted`, `unreachable` or `episode_over`
+plus the ticks used. They **interrupt** and return control after a failed move,
+when a new entity or the exit comes into sight, when a visible guard becomes
+`alert`, or after 80 ticks. This keeps every decision-relevant moment a
+decision of the LLM. One helper call costs one decision regardless of ticks.
 
 These are given to **all conditions** so that navigation is not the variable
-under test. Stated explicitly in the report.
+under test. Stated explicitly in the report. A test policy using only helpers,
+primitives and agent knowledge clears 200/200 tier-2 seeds.
 
 ### 6.3 Skill induction
 
@@ -444,8 +493,11 @@ Dungeon/                  class library, no MARS dependency
   Entities/Guard.cs, Door.cs, Item.cs ✓   Trap.cs (should)
   Render/AsciiRenderer.cs ✓ agent view, reveal view, status, debug
   Render/CommandInterpreter.cs ✓ text commands → primitives (CLI, later LLM output)
-  Agent/Facts.cs          observation → facts; condition evaluator
-  Agent/Helpers.cs        go_to, explore (A* on known cells)
+  Agent/AgentMemory.cs    ✓ last-known entity states, exit, last outcome
+  Agent/AgentContext.cs   ✓ world + memory; Do (primitive) / Decide (decision)
+  Agent/FactSet.cs        ✓ observation → facts + prompt text
+  Agent/Condition.cs      ✓ condition parser / evaluator
+  Agent/Navigation.cs     ✓ go_to, explore (BFS on believed-passable cells)
   Skills/Skill.cs         model + JSON (de)serialization
   Skills/Interpreter.cs   executes DSL, returns ticks + outcome
   Skills/Validator.cs     static checks
@@ -479,6 +531,9 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Entities | each transition table row, incl. probability edges 0 / 1 | unit |
 | Visibility | walls and closed doors block sight; radius boundary | unit |
 | Renderer / commands | agent view leaks nothing hidden; inspect commands are free; bad input costs no tick | unit |
+| Memory / facts | only seen entities; stale beliefs kept; 1 000-seed no-leak property | unit, property |
+| Conditions | every predicate, combinators, bindings, each parse error | unit |
+| Navigation | shortest path, no planning through unknown / closed doors, interrupts; knowledge-only policy clears 200 tier-2 seeds | unit, integration |
 | Interpreter | each statement type; `max` bound enforced; failure propagation | unit |
 | Validator | each rejection rule has a failing fixture | unit |
 | ScenarioTester | known-good skill passes; known-bad skill fails | unit |

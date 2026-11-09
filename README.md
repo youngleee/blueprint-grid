@@ -5,15 +5,15 @@ stochastic grid dungeon (guards, locked and jammed doors) and extends its own
 action set with verified, parameterized, closed-loop skills. The research plan,
 definitions and current status are in [`docs/PLAN.md`](docs/PLAN.md).
 
-**Status:** the environment is implemented and tested; the agent, LLM
-integration and skill system are not yet built. See the status table in
-`docs/PLAN.md`.
+**Status:** the environment and the agent's observation layer (facts,
+conditions, navigation helpers) are implemented and tested; the LLM integration
+and skill system are not yet built. See the status table in `docs/PLAN.md`.
 
 ## Project structure
 
 | Path | Contents |
 |---|---|
-| `Dungeon/` | Environment library (no MARS dependency): seeded generator, world, entities, text rendering |
+| `Dungeon/` | Environment + agent observation library (no MARS dependency): seeded generator, world, entities, agent memory, facts, conditions, navigation, text rendering |
 | `Dungeon.Cli/` | `play` and `render` commands for manual testing |
 | `Dungeon.Tests/` | xUnit tests, incl. 1 000-seed property tests |
 | `docs/PLAN.md` | Research plan, specification, timeline, implementation status |

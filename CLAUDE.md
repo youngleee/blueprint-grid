@@ -18,7 +18,11 @@ before changing behaviour.
     `Visibility`.
   - `Entities/`: `Guard`, `Door`, `Item`.
   - `Render/`: `AsciiRenderer` (agent view / reveal / debug),
-    `CommandInterpreter` (text commands → primitives).
+    `CommandInterpreter` (text commands → primitives, helpers, inspection).
+  - `Agent/`: `AgentMemory` (last-known entity states), `AgentContext` (world +
+    memory; the only way agent-side code acts), `FactSet` (what the LLM sees),
+    `Condition` (precondition/effect language), `Navigation` (`go_to`,
+    `explore`).
 - `Dungeon.Cli/`: `play` and `render` for manual testing.
 - `Dungeon.Tests/`: xUnit.
 - `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it;
@@ -42,8 +46,12 @@ dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3
 - **Turn-based.** A valid primitive costs exactly one tick; `invalid` actions
   cost none. Entities update after the agent's action in the same tick.
 - **No information leaks.** Anything shown to the agent (and later the LLM)
-  must come from currently visible cells or remembered terrain. `reveal` /
-  `debug` output is for humans only.
+  must come from `AgentMemory` / `FactSet`, never from `DungeonWorld` entity
+  lists directly. Agent-side code acts through `AgentContext.Do` (primitive)
+  and `AgentContext.Decide` (one decision). `reveal` / `debug` output is for
+  humans only. `FactSetTests` checks this over 1 000 seeds.
+- **Helpers plan on beliefs.** `Navigation` uses only known cells and
+  remembered entity states, and must interrupt on anything decision-relevant.
 - **Clone is deep.** Every new piece of mutable world state must be copied in
   the `DungeonWorld` copy constructor and covered by a clone test.
 - **Solvable by construction.** Obstacles sit on chokepoints in chain order;
