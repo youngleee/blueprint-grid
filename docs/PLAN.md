@@ -2,6 +2,22 @@
 
 Master's semester project (~15 weeks). Status: **draft for supervisor review**.
 
+## Implementation status
+
+Update this table in the same commit as the work it describes.
+
+| Week | Milestone | State |
+|---|---|---|
+| 1 | Supervisor sign-off on §3, §16; model pinned | open |
+| 2 | World core: Rng, map generator, visibility, turn-based world | done |
+| 3 | Guard, door, items, all primitives, solvable scenario tiers | done |
+| — | CLI `play` / `render` + `docs/TESTING.md` (manual testing aid) | done |
+| 4 | Facts, condition evaluator, `go_to` / `explore`, MARS host, PyGame | next |
+| 5 | LLM client + cache, condition A, D_max calibration | — |
+| 6–8 | Skill DSL, interpreter, validator, scenario tester, induction | — |
+| 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
+| 12–15 | Statistics, plots, report | — |
+
 ---
 
 ## 1. Motivation and problem statement
@@ -93,28 +109,31 @@ the project in the MARS ecosystem for the demo.
 
 ### 5.2 Randomness
 
-- One custom PRNG (SplitMix64 or xoshiro128) with **copyable state**;
+- SplitMix64 (`Dungeon/Core/Rng.cs`) with **copyable state**;
   `System.Random` cannot be cloned or reliably reseeded mid-run.
-- Separate streams per purpose: `layoutRng`, `entityRng`, `outcomeRng`.
-  Changing an entity's behaviour does then not change the layout for the same
-  seed.
+- Separate streams per purpose, derived from the seed with a stable hash:
+  `layout` (map), `entity` (placement and traits), `outcome` (action results
+  during the episode). Changing entity logic does then not change the layout
+  for the same seed. A unit test pins the first `layout` value for seed 1.
 
 ### 5.3 Map
 
-- Procedural: 4–6 rooms connected by corridors, total ≤ 40×40 cells.
-- Goal: reach the exit cell (`goal`) in the last room.
-- **Sight radius r = 3** (Chebyshev), walls block line of sight (simple
-  Bresenham). The agent keeps a memory of seen cells (fog of war).
-- Generator guarantees solvability: at least one obstacle path to the exit is
-  passable given the items placed on the map (checked by a solver on the full
-  state at generation time).
+- Procedural: 4–6 rooms (5–10 cells per side) on a 40×40 grid, connected as a
+  chain by L-shaped corridors. Start is the centre of the first room, exit the
+  centre of the last.
+- **Sight radius r = 3** (Chebyshev). Walls and closed doors block line of sight
+  (Bresenham); they are themselves visible. The agent keeps a memory of seen
+  cells (fog of war).
+- Solvability is guaranteed by construction (see *Placement* below) and checked
+  by property tests over 1 000 seeds per tier.
 
 ### 5.4 Entities (MUST: Guard, Door; SHOULD: Trap)
 
-All transitions use `entityRng` / `outcomeRng`; probabilities are per-seed
-parameters drawn from ranges so held-out seeds behave differently.
+All probabilities are per-entity traits drawn from the ranges below with the
+`entity` stream, so held-out seeds behave differently; outcomes are rolled with
+the `outcome` stream.
 
-**Guard** — blocks a corridor/doorway cell.
+**Guard**
 
 Stationary guard on a corridor chokepoint. Talk/give/throw only work while the
 guard is `idle` or `alert`.
@@ -152,26 +171,30 @@ closed — solvable by construction. Extra items (coin, lockpick, food, tool) ar
 alternatives and distractors. Tiers: 1 = one guard, 2 = locked + jammed door,
 3 = all three.
 
-**Trap (SHOULD)** — hidden; `look` reveals it within radius 1 with p_detect ∈
+**Trap (SHOULD, not implemented)** — hidden; `look` reveals it within radius 1 with p_detect ∈
 [0.4, 0.8]; `use(tool, trap)` disarms; stepping on it fails the episode.
 
-**Items:** `key(id)`, `lockpick`, `food`, `coin`, `tool` — placed in rooms,
-picked up with `pick_up`.
+**Items:** `key` (opens one door), `lockpick`, `food`, `coin`, `tool` — placed
+in rooms, picked up with `pick_up`. `tool` is a distractor until traps exist.
 
-### 5.5 Primitives (trusted, hard-coded)
+### 5.5 Primitives (trusted, hard-coded in `DungeonWorld`)
 
 | Primitive | Arguments | Notes |
 |---|---|---|
-| `move` | `dir ∈ {N,E,S,W}` | fails silently into walls/entities |
-| `look` | — | reveals hidden traps within 1 cell (probabilistic) |
-| `pick_up` | — | picks item on current cell |
-| `give` | `item, target` | target must be adjacent |
-| `talk` | `target` | target within 2 cells |
-| `use` | `item?, target` | doors, traps |
-| `throw` | `item, cell` | cell within 3, line of sight |
+| `move` | `dir ∈ {N,E,S,W}` | `failed` into walls, closed doors, blocking guards |
 | `wait` | — | |
+| `look` | — | currently only spends a tick; will reveal traps |
+| `pick_up` | — | picks the item on the agent's cell |
+| `talk` | `guard` | within 2 cells, line of sight |
+| `give` | `item, guard` | guard adjacent (Chebyshev 1); food → distracted, coin → bribed |
+| `throw` | `item, cell` | cell within 3, floor, line of sight; distracts guards within 4 |
+| `use` | `item \| none, door` | door orthogonally adjacent; `none` = push |
 
-Each primitive costs 1 tick. A primitive **chosen by the LLM** costs 1 decision.
+Every action returns `success`, `failed` (a tick passed, no effect) or
+`invalid` (impossible now, **no tick**). The episode ends `succeeded` on the
+exit cell or `failed` when a guard turns hostile; afterwards every action is
+`invalid`. A valid primitive costs 1 tick; a primitive **chosen by the LLM**
+costs 1 decision.
 
 ### 5.6 Observation → facts
 
@@ -404,17 +427,24 @@ A negative result for any hypothesis is reported as such.
 
 ## 10. Software architecture
 
+Files marked ✓ exist; the rest are planned.
+
 ```
-GridBlueprint/            (existing project, MARS host)
-  Program.cs              CLI: --demo <config> | --experiment <config> | --replay
-Dungeon/                  (new class library, no MARS dependency)
-  Core/Rng.cs             copyable PRNG, named streams
-  Core/DungeonWorld.cs    state, Step(action), Clone()
-  Core/Generator.cs       seeded rooms, entities, items, solvability check
-  Core/Visibility.cs      sight radius, line of sight, memory
-  Entities/Guard.cs, Door.cs, Trap.cs
+GridBlueprint/            (old prototype, MARS host; to be replaced by the dungeon host)
+Dungeon/                  class library, no MARS dependency
+  Core/Rng.cs             ✓ copyable PRNG, named streams
+  Core/Geometry.cs        ✓ Cell, Direction, Room
+  Core/DungeonMap.cs      ✓ immutable layout
+  Core/Generator.cs       ✓ seeded rooms + corridors
+  Core/ScenarioGenerator.cs ✓ chokepoints, obstacle + item placement, tiers
+  Core/Scenario.cs        ✓ map + initial entities
+  Core/Visibility.cs      ✓ sight radius, line of sight
+  Core/DungeonWorld.cs    ✓ episode state, primitives, entity updates, Clone()
+  Core/ActionResult.cs    ✓ success / failed / invalid
+  Entities/Guard.cs, Door.cs, Item.cs ✓   Trap.cs (should)
+  Render/AsciiRenderer.cs ✓ agent view, reveal view, status, debug
+  Render/CommandInterpreter.cs ✓ text commands → primitives (CLI, later LLM output)
   Agent/Facts.cs          observation → facts; condition evaluator
-  Agent/Primitives.cs
   Agent/Helpers.cs        go_to, explore (A* on known cells)
   Skills/Skill.cs         model + JSON (de)serialization
   Skills/Interpreter.cs   executes DSL, returns ticks + outcome
@@ -425,9 +455,10 @@ Dungeon/                  (new class library, no MARS dependency)
   Llm/Prompts.cs
   Agent/LlmAgent.cs       decision loop, induction trigger
   Experiment/Runner.cs, Conditions.cs, MetricsWriter.cs
-Dungeon.Tests/            NUnit or xUnit
-Visualization/            PyGame (extended: fog of war, entities, skill log)
-docs/PLAN.md
+Dungeon.Cli/              ✓ play / render commands for manual testing
+Dungeon.Tests/            ✓ xUnit
+Visualization/            PyGame (to be extended: fog of war, entities, skill log)
+docs/PLAN.md, docs/TESTING.md ✓
 ```
 
 **Reused from the old prototype:** MARS host setup, `ILlmClient` and the OpenAI
@@ -442,10 +473,12 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 
 | Layer | What | Kind |
 |---|---|---|
-| Rng | same seed → same sequence; clone continues identically | unit |
-| Generator | 1 000 seeds: solvable, connected, item for every lock | property |
+| Rng | same seed → same sequence; clone continues identically; pinned value | unit |
+| Generator | 1 000 seeds: connected, borders closed, no overlap, deterministic | property |
+| ScenarioGenerator | 1 000 seeds × 3 tiers: obstacles are chokepoints, required items reachable before them, no shared cells; scripted solver clears 200 tier-2 seeds | property |
 | Entities | each transition table row, incl. probability edges 0 / 1 | unit |
-| Visibility | walls block sight; radius boundary | unit |
+| Visibility | walls and closed doors block sight; radius boundary | unit |
+| Renderer / commands | agent view leaks nothing hidden; inspect commands are free; bad input costs no tick | unit |
 | Interpreter | each statement type; `max` bound enforced; failure propagation | unit |
 | Validator | each rejection rule has a failing fixture | unit |
 | ScenarioTester | known-good skill passes; known-bad skill fails | unit |

@@ -1,83 +1,61 @@
-# Adaptive MARS Agent
+# Action Space Expansion in an LLM Dungeon Agent
 
-This repository contains a grid-based agent simulation built with MARS. The main experiment is an `AdaptiveAgent` that uses trusted primitive movements, validated composite skills, and an optional LLM to propose a detour when it encounters an obstruction.
+Master's semester project. An LLM agent explores a partially observable,
+stochastic grid dungeon (guards, locked and jammed doors) and extends its own
+action set with verified, parameterized, closed-loop skills. The research plan,
+definitions and current status are in [`docs/PLAN.md`](docs/PLAN.md).
 
-The LLM never executes code directly. It proposes JSON containing primitive moves; `ActionValidator` and the agent's path checks decide whether the proposal can be registered and executed. The offline `FakeLlmClient` makes demonstrations deterministic. The `OpenAiLlmClient` is available for real-model experiments.
+**Status:** the environment is implemented and tested; the agent, LLM
+integration and skill system are not yet built. See the status table in
+`docs/PLAN.md`.
 
 ## Project structure
 
-- `GridBlueprint/`: .NET 10 MARS simulation.
-- `GridBlueprint/Model/AdaptiveAgent.cs`: adaptive navigation and detour handling.
-- `GridBlueprint/Model/ActionValidator.cs`: validates generated skills before registration.
-- `GridBlueprint/Model/SkillArchive.cs`: persists validated skills.
-- `GridBlueprint/Model/LlmSkillGenerator.cs`: parses provider responses into structured skills.
-- `GridBlueprint/config.adaptive.detour.json`: headless two-wall detour scenario.
-- `GridBlueprint/config.adaptive.visual.json`: 20×20 visualization scenario.
-- `Visualization/`: standalone Python/PyGame visualization.
-- `thomas_readme.md`: short German guide for running the demo.
+| Path | Contents |
+|---|---|
+| `Dungeon/` | Environment library (no MARS dependency): seeded generator, world, entities, text rendering |
+| `Dungeon.Cli/` | `play` and `render` commands for manual testing |
+| `Dungeon.Tests/` | xUnit tests, incl. 1 000-seed property tests |
+| `docs/PLAN.md` | Research plan, specification, timeline, implementation status |
+| `docs/TESTING.md` | How to test the environment by hand |
+| `GridBlueprint/` | **Previous prototype** (MARS detour agent), kept until the dungeon gets its MARS host |
+| `Visualization/` | PyGame visualizer for MARS runs (currently for the old prototype) |
 
 ## Requirements
 
-- .NET SDK 10.0 or higher, pinned through `global.json`.
-- `Mars.Life.Simulations` 6.0.0, restored automatically by .NET.
-- Python 3.8 or higher for visualization. Python 3.13 users should use a compatible PyGame release listed in `Visualization/requirements.txt`.
+- .NET SDK 10.0 (pinned through `global.json`)
+- Python 3.8+ for the visualization only
 
-## Build and run
+## Build and test
 
 ```bash
 dotnet build GridBlueprint.sln
+dotnet test Dungeon.Tests
+```
+
+## Try the environment
+
+```bash
+dotnet run --project Dungeon.Cli -- render --seed 1 --tier 3   # full dungeon + hidden parameters
+dotnet run --project Dungeon.Cli -- play   --seed 1 --tier 3   # play as the agent
+```
+
+Details and manual test cases: [`docs/TESTING.md`](docs/TESTING.md).
+
+## Previous prototype
+
+`GridBlueprint/` contains the first prototype: an `AdaptiveAgent` that asked an
+LLM for fixed detour sequences around walls. It was judged not to demonstrate
+action space expansion (fixed macros in a fully observable, deterministic grid;
+see `docs/PLAN.md` §1). The tag `v0-detour-prototype` marks its last state. Its
+run instructions:
+
+```bash
 cd GridBlueprint
 ADAPTIVE_LLM_PROVIDER=fake dotnet run -- config.adaptive.detour.json
 ```
 
-The demo starts at `(1,10)`, reaches the first goal at `(9,10)`, detours around the first wall, then reuses the validated detour at the second wall before reaching `(18,10)`.
+## Secrets
 
-The `GridBlueprint/run.sh` helper builds the project, runs a scenario, writes a timestamped log to `GridBlueprint/logs/`, and opens the log in the default macOS text editor:
-
-```bash
-cd GridBlueprint
-bash run.sh config.adaptive.visual.json
-```
-
-## LLM providers
-
-The default provider is `fake`. To use OpenAI, create `GridBlueprint/.env`:
-
-```text
-ADAPTIVE_LLM_PROVIDER=openai
-OPENAI_API_KEY=your-api-key
-OPENAI_MODEL=gpt-4.1
-```
-
-The local `.env` file is ignored by Git. Prompts, candidates, rejections, provider information, and token usage where available are written to the run log; secrets are not logged.
-
-The LLM is called only after the agent encounters a blocked cell and cannot reuse an applicable validated skill. It is a proposal mechanism, not the safety layer or the low-level movement controller.
-
-## Visualization
-
-```bash
-cd Visualization
-python3 -m venv .venv
-source .venv/bin/activate       # macOS/Linux
-pip install -r requirements.txt
-python main.py
-```
-
-In a second terminal, run the simulation with `config.adaptive.visual.json`. The PyGame window shows the 20×20 grid, red blocked cells, the agent, the first goal, and the final goal. Use the up/down arrow keys to change visualization speed.
-
-## Benchmark
-
-```bash
-cd GridBlueprint
-dotnet run -- --benchmark
-```
-
-The output is written to `GridBlueprint/benchmark-results.csv`. The current benchmark is an MVP benchmark for skill generation and reuse; Phase 2 will add a classical A*/`FindPath` baseline, obstacle scenarios, real-model repetitions, parameterized skills, and per-task metrics.
-
-## Current research limitation
-
-For a fully observable, deterministic grid with coordinate goals, classical search is the natural baseline and may be superior to an LLM. Phase 2 therefore tests whether an LLM adds value under conditions such as partial observability, semantic goals, or reusable strategies across changing obstacle layouts. If A* or a simpler rule-based system performs better, that is the correct conclusion.
-
-## Configuration
-
-Simulation configuration is loaded from JSON rather than hard-coded in `Program.cs`. Available resources include multiple grid CSVs and agent CSVs under `GridBlueprint/Resources/`. Change the scenario file or its resource references to select a different grid.
+LLM credentials go in the ignored `GridBlueprint/.env` (see `.env.example`).
+Never commit API keys.

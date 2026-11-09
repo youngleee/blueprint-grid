@@ -1,4 +1,9 @@
-# MARS Adaptive Agent
+# MARS Adaptive Agent (Prototyp v0)
+
+**Hinweis:** Dieser Leitfaden beschreibt den ersten Prototyp (Umweg-Agent im
+Ordner `GridBlueprint/`, Tag `v0-detour-prototype`). Das aktuelle Projekt – ein
+Dungeon mit Wachen und Türen, in dem der Agent eigene Skills erzeugt – ist in
+`docs/PLAN.md` beschrieben; der Testleitfaden dafür steht in `docs/TESTING.md`.
 
 ## Demo ansehen
 
