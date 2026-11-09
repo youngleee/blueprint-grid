@@ -7,16 +7,19 @@ namespace Dungeon.Tests;
 
 public class CommandInterpreterTests
 {
+    private static readonly ActionSpace Space = StandardActions.Create();
+
     private static AgentContext NewAgent() => new(TestMaps.World(TestMaps.Corridor,
         doors: [new Door("door_1", new Cell(3, 1), DoorKind.Jammed, 0, 1.0)],
         items: [TestMaps.AtStart(TestMaps.Corridor, "food_1", ItemType.Food)]));
 
-    private static string Run(AgentContext a, string command) => CommandInterpreter.Execute(a, command).Output;
+    private static string Run(AgentContext a, string command) => CommandInterpreter.Execute(a, Space, command).Output;
 
     [Theory]
     [InlineData("move E")]
     [InlineData("e")]
-    [InlineData("MOVE right")]
+    [InlineData("MOVE e")]
+    [InlineData("move(E)")]
     public void Move_aliases_all_move_east(string command)
     {
         var a = NewAgent();
@@ -42,17 +45,19 @@ public class CommandInterpreterTests
         Assert.True(a.World.Doors.Single().IsOpen);
     }
 
-    [Fact]
-    public void Throw_parses_coordinates()
+    [Theory]
+    [InlineData("throw food_1 2 1")]
+    [InlineData("throw(food_1, 2, 1)")]
+    public void Throw_parses_coordinates_in_both_syntaxes(string command)
     {
         var a = NewAgent();
         Run(a, "pick_up");
-        Run(a, "throw food_1 2 1");
+        Run(a, command);
         Assert.Equal(new Cell(2, 1), a.World.Items.Single().Position);
     }
 
     [Fact]
-    public void Actions_update_agent_memory()
+    public void Actions_update_agent_memory_and_last_outcome()
     {
         var a = NewAgent();
         Run(a, "pick_up");
@@ -64,8 +69,7 @@ public class CommandInterpreterTests
     public void Goto_walks_to_known_entity()
     {
         var a = NewAgent();
-        var output = Run(a, "goto door_1");
-        Assert.Contains("go_to(door_1,1) -> arrived", output);
+        Assert.Contains("go_to(door_1,1) -> arrived", Run(a, "goto door_1"));
         Assert.Equal(new Cell(2, 1), a.Position);
     }
 
@@ -90,6 +94,7 @@ public class CommandInterpreterTests
     [InlineData("state")]
     [InlineData("debug")]
     [InlineData("facts")]
+    [InlineData("actions")]
     [InlineData("check has(food)")]
     [InlineData("help")]
     public void Inspect_commands_are_free(string command)
@@ -97,26 +102,36 @@ public class CommandInterpreterTests
         var a = NewAgent();
         Run(a, command);
         Assert.Equal(0, a.Tick);
+        Assert.Null(a.Memory.LastOutcome);
     }
 
     [Theory]
-    [InlineData("fly", "unknown command")]
-    [InlineData("move", "missing <direction>")]
-    [InlineData("move Q", "bad direction")]
-    [InlineData("throw food_1 a 1", "must be a number")]
-    [InlineData("goto", "missing <id|exit>")]
-    public void Bad_input_reports_error_without_spending_a_tick(string command, string message)
+    [InlineData("fly", "unknown action 'fly'")]
+    [InlineData("move", "expected move(dir)")]
+    [InlineData("move Q", "dir must be N, E, S or W")]
+    [InlineData("throw food_1 a 1", "x must be a whole number")]
+    [InlineData("goto", "expected go_to(target, [distance])")]
+    [InlineData("talk guard_1", "unknown guard 'guard_1'")]
+    [InlineData("goto exit", "exit has not been seen")]
+    public void Bad_input_is_invalid_and_costs_no_tick(string command, string message)
     {
         var a = NewAgent();
         var output = Run(a, command);
-        Assert.StartsWith("error:", output);
+        Assert.Contains("-> invalid", output);
         Assert.Contains(message, output);
         Assert.Equal(0, a.Tick);
     }
 
     [Fact]
+    public void Help_lists_every_registered_action()
+    {
+        var help = CommandInterpreter.Help(Space);
+        Assert.All(Space.Actions, act => Assert.Contains(act.Signature, help));
+    }
+
+    [Fact]
     public void Quit_sets_quit_flag()
     {
-        Assert.True(CommandInterpreter.Execute(NewAgent(), "quit").Quit);
+        Assert.True(CommandInterpreter.Execute(NewAgent(), Space, "quit").Quit);
     }
 }

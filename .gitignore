@@ -460,6 +460,8 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 .ipynb_checkpoints
 /cache
+/runs
+.env
 GridBlueprint/skills.json
 GridBlueprint/.env
 benchmark-results.csv

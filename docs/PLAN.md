@@ -13,8 +13,8 @@ Update this table in the same commit as the work it describes.
 | 3 | Guard, door, items, all primitives, solvable scenario tiers | done |
 | — | CLI `play` / `render` + `docs/TESTING.md` (manual testing aid) | done |
 | 4 | Facts, condition evaluator, `go_to` / `explore` | done |
-| 4b | MARS host for `DungeonWorld`, PyGame update | next |
-| 5 | LLM client + cache, condition A, D_max calibration | — |
+| 4b | MARS host for `DungeonWorld`, PyGame update | deferred to week 13 (demo only; experiment does not need MARS) |
+| 5 | Action space, LLM client + cache + budget, `choose_action`, conditions A and R, experiment runner | done (offline); live calibration needs API key |
 | 6–8 | Skill DSL, interpreter, validator, scenario tester, induction | — |
 | 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
 | 12–15 | Statistics, plots, report | — |
@@ -263,6 +263,24 @@ loop until goal | failure | decision budget exhausted:
         maybe Induce()                                                 // §6.3
 ```
 
+**Implemented (week 5)** without the `applicable` filter and `Induce` step,
+which arrive with skills:
+
+- `ActionSpace` (`Dungeon/Agent/ActionSpace.cs`) is `A_t`: a registry of named
+  actions with typed parameters. It starts with the 8 primitives and 2 helpers
+  for every condition; skills will be registered into it. **Every** decision
+  (CLI or LLM) goes through `ActionSpace.Execute`, which validates arguments
+  and records the outcome as `last action`.
+- Entity arguments are validated against the agent's *memory*: naming an
+  unseen entity gives the same `invalid` message as naming a non-existent one,
+  so the error text cannot leak hidden state.
+- `EpisodeRunner` loops facts → `IDecider` → `ActionSpace.Execute`. Stops on
+  exit, hostile guard, decision budget or 500 ticks. Unparseable replies and
+  invalid actions cost a decision (no tick) and appear in the next prompt's
+  history, so the model sees its mistakes.
+- Deciders: `LlmDecider` (choose_action prompt) and `RuleBasedDecider`
+  (condition R, §9.1).
+
 ### 6.2 Built-in helpers (not counted as learned skills)
 
 Implemented in `Dungeon/Agent/Navigation.cs`. Both plan by BFS (uniform step
@@ -378,47 +396,89 @@ Contracts are kept so selection works identically.
 
 ### 8.1 Model
 
-Cheap OpenAI model (e.g. `gpt-4.1-mini` or the current mini tier). **Pin a
-dated snapshot** in config and report it. Temperature 0, JSON output mode.
-Decide final model in week 1 by running 20 calls of each prompt type and
-checking JSON validity.
+Cheap OpenAI model via the Responses API (`Dungeon/Llm/OpenAiClient.cs`).
+Default **`gpt-4.1-mini-2025-04-14`** (dated snapshot, overridable with
+`OPENAI_MODEL`); temperature 0; JSON output mode; 300 max output tokens.
+Retries 429/5xx/network errors with exponential backoff (4 attempts); 4xx
+fails immediately. Confirm the model in week 1 by checking JSON validity on a
+first live run.
 
 ### 8.2 Two prompt types
 
-| Prompt | Frequency | Output |
-|---|---|---|
-| `choose_action` | every decision | `{"action": name, "args": [...], "reason": "..."}` |
-| `induce_skill` | rare | one DSL skill |
+| Prompt | Frequency | Output | State |
+|---|---|---|---|
+| `choose_action` | every decision | `{"action": name, "args": [...], "reason": "..."}` | done (`Dungeon/Agent/Prompts.cs`) |
+| `induce_skill` | rare | one DSL skill | week 8 |
+
+`choose_action` = system part (rules of the world, every action's signature
+and description from `A_t`, reply format, 2 examples) + user part (decisions
+left, current facts §5.6, last 6 decision outcomes). The system part only
+changes when `A_t` changes. A test checks over 50 seeds that no hidden entity
+parameter (chances, patience) appears in any prompt. The parser accepts minor
+shape deviations (code fences, numbers as args, args as one string); names and
+arguments are then validated by `ActionSpace`.
 
 ### 8.3 Record/replay cache (reproducibility)
 
-- Key: SHA-256 of `(model, temperature, prompt_type, full prompt text)`.
-- Store: `cache/llm/<hash>.json` with request, response, token usage, time.
-- Modes: `live` (call + write), `replay` (read only, fail on miss),
-  `record` (call on miss).
-- A seeded run in `replay` mode is bit-for-bit reproducible without network.
+- Key: SHA-256 of `(version, model, temperature, max_output_tokens,
+  prompt_type, system, user)` (`Dungeon/Llm/CachingClient.cs`).
+- Store: `cache/llm/<provider>/<hash[0:2]>/<hash>.json` with request,
+  response, token usage and time; written atomically.
+- Modes: `live` (always call, overwrite), `record` (call on miss; default),
+  `replay` (read only, fail on miss).
+- A seeded run in `replay` mode is bit-for-bit reproducible without network
+  (tested: metrics rows identical except the cache-hit column).
   Live variance is measured separately (§9.5).
 
 ### 8.4 Cost control
 
-- Hard caps per run: max calls, max tokens; runner aborts cleanly.
-- Log tokens per call; report total cost per condition.
-- Estimate in week 5 from real calls and adjust episode counts before
-  committing to the full experiment.
+- Hard caps per run on **real** calls and tokens (`MeteredClient`, defaults
+  2 000 calls / 3 M tokens, CLI `--max-calls`, `--max-tokens`). It wraps the
+  network client *inside* the cache, so cached answers are free and a replay
+  of a capped run still works. On a cap or API error the runner stops, keeps
+  finished episodes and writes `run.json` with the reason.
+- Tokens per call are in every trace line and summed per episode and run.
+- Offline stub provider (`--provider stub`): explores until the exit is in the
+  facts, then walks there. For pipeline checks only; never a result.
+- **Calibration (needs key):** first live run of A on tier 3 gives tokens per
+  decision and cost per episode; adjust episode counts before the full
+  experiment. Offline estimate from the stub: ≈ 700 input + 15 output tokens
+  per decision.
 
 ## 9. Experimental design
 
 ### 9.1 Conditions
 
-| ID | Name | Induction | Library persists | Skill form |
-|---|---|---|---|---|
-| **A** | Primitives only | no | — | — |
-| **B** | Induction, reset each episode | yes | no | DSL |
-| **C** | Induction, persistent library | yes | yes | DSL |
-| **E** | Macro ablation | yes | yes | macro (§7.3) |
-| D (could) | Hand-written library | no | fixed | DSL |
+| ID | Name | Induction | Library persists | Skill form | State |
+|---|---|---|---|---|---|
+| **A** | Primitives only | no | — | — | implemented |
+| **R** | Hand-written rules, no LLM | no | — | — | implemented |
+| **B** | Induction, reset each episode | yes | no | DSL | — |
+| **C** | Induction, persistent library | yes | yes | DSL | — |
+| **E** | Macro ablation | yes | yes | macro (§7.3) | — |
+| D (could) | Hand-written library | no | fixed | DSL | — |
 
 Must: A, C, E. Should: B. Could: D.
+
+**R** (added in week 5) is a fixed if-then policy over the same facts and the
+same action set (`RuleBasedDecider`): go to the exit if known; bribe/feed/talk
+to a visible guard; pick up items; explore; open doors with key, lockpick or
+push. It answers the reviewer question "would simple rules do?" and is
+reported alongside A.
+
+First offline numbers for R, seeds 1–50, D_max = 40:
+
+| Tier | Success | Mean decisions | Failures |
+|---|---|---|---|
+| 1 (guard) | 86 % | 11.6 | all `caught by guard_1` |
+| 2 (doors) | 100 % | 19.8 | — |
+| 3 (all) | 86 % | 26.8 | 5 caught, 2 decision budget |
+
+R's guard failures are the open-loop pattern the project targets: it repeats
+`give(coin, guard)` after refusals until patience runs out. A closed-loop skill
+that switches strategy on refusal should avoid exactly this. Consequence for
+the claim: **C must be compared with R, not only with A**; if C does not beat
+R, that is reported.
 
 ### 9.2 Seeds and phases
 
@@ -432,12 +492,22 @@ Must: A, C, E. Should: B. Could: D.
 ### 9.3 Budget
 
 - Decision budget per episode: **D_max** (calibrated in week 5 so that A
-  succeeds on ≤ ~40 % of tier-3 tasks — tuned openly, value reported).
+  succeeds on ≤ ~40 % of tier-3 tasks — tuned openly, value reported). CLI
+  default 40 until calibrated with live runs.
 - Tick budget per episode: T_max = 500 (safety cap).
 - Induction calls do not count as decisions but are capped (≤ 3 per episode)
   and reported separately.
 
 ### 9.4 Metrics (per episode, CSV)
+
+Implemented columns of `metrics.csv` (`EpisodeResult`): `condition, tier,
+seed, success, end_reason, decisions, ticks, invalid_actions, parse_errors,
+llm_calls, cache_hits, tokens_in, tokens_out, action_set_size`. Each run
+directory also has `run.json` (configuration, decider, model, cache mode,
+budget, summary; never the API key) and `traces/seed_N.jsonl` (per decision:
+facts, action, args, reason, outcome, raw reply, tokens).
+
+Planned columns, added with skills:
 
 | Metric | Purpose |
 |---|---|
@@ -471,6 +541,7 @@ Must: A, C, E. Should: B. Could: D.
 - H1: C > A on held-out success (equal D_max).
 - H2: C > E on held-out success; gap larger on seeds with high outcome variance.
 - H3: In C, LLM calls per episode decrease across training episodes.
+- H4: C ≥ R on held-out tier-3 success (equal D_max).
 
 A negative result for any hypothesis is reported as such.
 
@@ -498,16 +569,25 @@ Dungeon/                  class library, no MARS dependency
   Agent/FactSet.cs        ✓ observation → facts + prompt text
   Agent/Condition.cs      ✓ condition parser / evaluator
   Agent/Navigation.cs     ✓ go_to, explore (BFS on believed-passable cells)
+  Agent/ActionSpace.cs    ✓ A_t registry, argument validation, standard actions
+  Agent/Prompts.cs        ✓ choose_action prompt
+  Agent/DecisionParser.cs ✓ model reply → Decision
+  Agent/Deciders.cs       ✓ LlmDecider, RuleBasedDecider (R)
+  Agent/EpisodeRunner.cs  ✓ decision loop, traces, EpisodeResult
+  Agent/ExperimentRunner.cs ✓ seeds × condition → run.json, metrics.csv, traces
+  Llm/OpenAiClient.cs     ✓ Responses API, retries
+  Llm/CachingClient.cs    ✓ record / replay cache
+  Llm/MeteredClient.cs    ✓ call / token caps
+  Llm/StubLlmClient.cs    ✓ offline pipeline stub
+  Llm/LlmSettings.cs      ✓ environment / .env settings
   Skills/Skill.cs         model + JSON (de)serialization
   Skills/Interpreter.cs   executes DSL, returns ticks + outcome
   Skills/Validator.cs     static checks
   Skills/ScenarioTester.cs generated micro-room tests
   Skills/Library.cs       registry + persistence
-  Llm/ILlmClient.cs, OpenAiClient.cs, CachingClient.cs
-  Llm/Prompts.cs
-  Agent/LlmAgent.cs       decision loop, induction trigger
-  Experiment/Runner.cs, Conditions.cs, MetricsWriter.cs
-Dungeon.Cli/              ✓ play / render commands for manual testing
+  Llm/Prompts (induce_skill)
+  Agent/LlmAgent: induction trigger
+Dungeon.Cli/              ✓ play / render / run
 Dungeon.Tests/            ✓ xUnit
 Visualization/            PyGame (to be extended: fog of war, entities, skill log)
 docs/PLAN.md, docs/TESTING.md ✓
@@ -534,14 +614,18 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Memory / facts | only seen entities; stale beliefs kept; 1 000-seed no-leak property | unit, property |
 | Conditions | every predicate, combinators, bindings, each parse error | unit |
 | Navigation | shortest path, no planning through unknown / closed doors, interrupts; knowledge-only policy clears 200 tier-2 seeds | unit, integration |
-| Interpreter | each statement type; `max` bound enforced; failure propagation | unit |
-| Validator | each rejection rule has a failing fixture | unit |
-| ScenarioTester | known-good skill passes; known-bad skill fails | unit |
-| Cache | replay reproduces live run exactly | integration |
-| End to end | scripted fake LLM solves tier-1 seed; replay of recorded run matches metrics | integration |
+| Action space | registry, argument validation against memory (unseen = non-existent), outcome recording | unit |
+| LLM client | request body, output parsing, retry / no-retry rules (stubbed HTTP, no network) | unit |
+| Cache / budget | record, replay, live, miss error, key covers every field; caps; cache hits free | unit |
+| Prompt / parser | lists every action, no hidden parameters over 50 seeds, history bound; reply shapes | unit, property |
+| Runner | budgets, invalid / unparseable handling, hostile end, outputs; **replay reproduces a recorded run exactly** | integration |
+| Interpreter (planned) | each statement type; `max` bound enforced; failure propagation | unit |
+| Validator (planned) | each rejection rule has a failing fixture | unit |
+| ScenarioTester (planned) | known-good skill passes; known-bad skill fails | unit |
 
-A deterministic **scripted LLM stub** (rule-based policy, not canned answers)
-is used for tests and CI only; it is never reported as a result.
+No test touches the network. The LLM path is exercised with scripted clients
+(fixed replies), the stub provider and a stubbed HTTP handler; these are never
+reported as results.
 
 ## 12. Timeline and milestones
 
@@ -580,6 +664,7 @@ is used for tests and CI only; it is never reported as a result.
 | Cheap model produces invalid DSL | high | medium | JSON mode, grammar in prompt, 2 format examples, feedback loop (3 attempts), validator messages specific |
 | Induced skills are trivial macros anyway | medium | high | Closed-loop is a validator requirement for condition C (§3 property 2); E quantifies the difference |
 | A already solves everything | medium | high | Calibrate D_max in week 5; stochastic entities punish open-loop play |
+| Simple rules (R) already solve everything | medium | high | Offline R is 86 % on tier 3; its failures are open-loop guard retries. Report C vs. R honestly (H4); if needed, widen guard trait ranges and report the change |
 | Environment work overruns | high | high | Guard + Door only until week 10; checkpoint at week 8 |
 | API cost overrun | low | medium | Hard caps, cache, cost estimate in week 5 |
 | Non-reproducible results | medium | high | Record/replay cache; pinned snapshot; seeds in every CSV row |
@@ -603,3 +688,5 @@ is used for tests and CI only; it is never reported as a result.
 4. Report language (German / English) and expected length.
 5. Is an API budget available, or should the cost cap be planned around
    personal funds?
+6. Is a hand-written rule baseline (R, §9.1) the right "classical" comparison,
+   or is a different baseline expected?

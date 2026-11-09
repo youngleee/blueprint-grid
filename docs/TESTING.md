@@ -1,4 +1,4 @@
-# Testing the Dungeon Environment
+# Testing the Dungeon Project
 
 ## Setup
 
@@ -15,6 +15,8 @@ dotnet test Dungeon.Tests                                         # all (~35 s, 
 dotnet test Dungeon.Tests --filter "FullyQualifiedName~GuardTests"  # one area
 ```
 
+No automated test uses the network or an API key.
+
 ## Manual tools
 
 ```bash
@@ -29,18 +31,22 @@ printf 'state\nw\nw\nuse none door_1\n' | dotnet run --project Dungeon.Cli -- pl
 ```
 
 Tiers: `1` one guard · `2` locked + jammed door · `3` all three.
-In `play`, type `help` for commands. Command groups:
+In `play`, type `help` for the action list (generated from the action space,
+so it is exactly what the LLM is offered). Every action goes through the same
+validation as the LLM's choices. Command groups:
 
 - **Primitives** (`move`, `wait`, `look`, `pick_up`, `talk`, `give`, `throw`,
   `use`): one tick each, none if `invalid`.
-- **Helpers** (`goto <id|exit> [distance]`, `explore`): several ticks; they stop
-  early when something new comes into sight, a move fails, or a guard turns
-  alert.
+- **Helpers** (`go_to <id|exit> [distance]` — `goto` also works — and
+  `explore`): several ticks; they stop early when something new comes into
+  sight, a move fails, or a guard turns alert.
 - **Inspect** (free, no tick): `facts` (exactly what the LLM will see),
-  `check <condition>` (evaluate a condition against the facts), `map`, `state`,
-  `reveal`, `debug`. `reveal` and `debug` show hidden information — the agent
-  never gets these.
+  `check <condition>` (evaluate a condition against the facts), `actions`,
+  `map`, `state`, `reveal`, `debug`. `reveal` and `debug` show hidden
+  information — the agent never gets these.
 
+Arguments may be separated by spaces or written as a call: `give food_2 guard_1`
+or `give(food_2, guard_1)`. Entity ids must be ones the agent has seen.
 Map rows are labelled with `y`, the header gives the `x` range; `throw` takes
 absolute `x y`.
 
@@ -68,9 +74,48 @@ Use `render` first to find the entity ids and positions for a seed.
 | 16 | Stale memory | see a guard go `alert`, step out of sight, `facts` vs `debug` | facts still say `alert`, debug says `idle` |
 | 17 | Explore stops on discovery | `explore` repeatedly | each call ends with `spotted <id>` or `nothing left to explore` |
 | 18 | goto stops next to doors | `goto door_N` | ends adjacent to the door, not on it |
-| 19 | goto through unknown | `goto exit` before seeing it | `unreachable`, tick unchanged |
+| 19 | goto before seeing the exit | `goto exit` at the start | `invalid: the exit has not been seen yet`, tick unchanged |
 | 20 | Last action reports the helper | `explore`, then `facts` | `last action: explore -> …`, not a single move |
 | 21 | Conditions | `check has(key) and state(door_2) == closed`, `check state(guard_1)` | `true`/`false`; second is an error (needs a comparison) |
+| 22 | Unseen ids are rejected | `talk guard_1` before seeing the guard | `invalid: unknown guard 'guard_1' (known: none)` — same as for a made-up id |
 
 Probabilistic cases (7, 10–12) depend on the seed: the same seed and the same
 command sequence always give the same outcome; a different seed may not.
+
+## Experiment runs
+
+```bash
+dotnet run --project Dungeon.Cli -- run --condition A|R [options]
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--condition` | required | `A` LLM with primitives + helpers · `R` hand-written rules, no LLM |
+| `--tier` | `3` | `1`, `2`, `3` |
+| `--seeds` | `1-20` | `1-20`, `1,4,9`, `5` |
+| `--max-decisions` | `40` | decision budget D_max per episode |
+| `--llm` | `record` | `record` (cache, call on miss) · `replay` (cache only, offline) · `live` (always call) |
+| `--provider` | from `.env`, else `openai` | `openai` · `stub` (offline, pipeline checks only) |
+| `--max-calls`, `--max-tokens` | `2000`, `3000000` | hard caps on real API usage per run |
+| `--out` | `runs/<time>_<cond>_tier<N>` | output directory |
+| `--env` | `./.env` (or parent dirs) | settings file |
+
+Output directory:
+
+- `run.json` — configuration, decider, model, cache mode, budget, summary. Never the key.
+- `metrics.csv` — one row per episode (columns listed in `docs/PLAN.md` §9.4).
+- `traces/seed_N.jsonl` — one JSON line per decision: facts, action, args,
+  reason, outcome, raw model reply, tokens, cache hit.
+
+### Run cases
+
+| # | Case | Command | Expected |
+|---|---|---|---|
+| R1 | Rule baseline | `run --condition R --tier 3 --seeds 1-50` | ~86 % success; failures are `caught by guard_1` or `decision_budget` |
+| R2 | Offline LLM pipeline | `run --condition A --provider stub --tier 3 --seeds 1-5` | runs, writes outputs; low success is expected (the stub only explores) |
+| R3 | Replay is identical | R2, then the same with `--llm replay` | same `metrics.csv` except `cache_hits`; no network |
+| R4 | Replay miss | `--llm replay` with seeds never recorded | stops with `replay cache miss`, `run.json` still written, exit code 1 |
+| R5 | Missing key | `run --condition A` without `.env` | `error: OPENAI_API_KEY is not set`, exit code 2 |
+| R6 | First live run | `.env` with key, `run --condition A --tier 3 --seeds 1-3 --max-calls 150` | 3 episodes; check `traces/` for valid JSON replies, tokens per decision in `metrics.csv` |
+| R7 | Budget cap | R6 with `--max-calls 5` | stops after 5 real calls with `budget … reached` |
+| R8 | Cache saves money | rerun R6 unchanged | all calls `cached`, no new tokens billed |
