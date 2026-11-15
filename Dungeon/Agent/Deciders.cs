@@ -27,7 +27,7 @@ public sealed class LlmDecider(ILlmClient client, string model, double temperatu
         int decisionsLeft, CancellationToken ct = default)
     {
         var request = new LlmRequest(model, temperature, Prompts.ChooseActionType,
-            Prompts.ChooseActionSystem(space), Prompts.ChooseActionUser(facts, history, decisionsLeft));
+            Prompts.ChooseActionSystem(space), Prompts.ChooseActionUser(facts, history, decisionsLeft, UsableSkills.List(facts, space)));
         var r = await client.CompleteAsync(request, ct);
         if (DecisionParser.TryParse(r.Text, out var decision, out var error))
             return new DecisionRecord(decision, r.Text, r.InputTokens, r.OutputTokens, r.FromCache, r.CacheKey, null);

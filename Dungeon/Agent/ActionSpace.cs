@@ -35,7 +35,8 @@ public sealed record AgentAction(
     ActionKind Kind,
     IReadOnlyList<ActionParam> Params,
     string Description,
-    Func<AgentContext, ActionSpace, IReadOnlyList<string>, ActionOutcome> Run)
+    Func<AgentContext, ActionSpace, IReadOnlyList<string>, ActionOutcome> Run,
+    Applicability? Applies = null)
 {
     public string Signature => Params.Count == 0 ? Name : $"{Name}({string.Join(", ", Params)})";
 }

@@ -17,7 +17,8 @@ Update this table in the same commit as the work it describes.
 | 5 | Action space, LLM client + cache + budget, `choose_action`, conditions A and R, experiment runner | done (offline); live calibration needs API key |
 | 6 | Skill DSL, interpreter, contracts, skills in `A_t`, hand-written library, conditions D and RD | done; first evidence in §9.1 |
 | 7 | Skill validator, scenario tester (calibrated), admission feedback, `skills --test`, `run --skills` | done |
-| 8 | `induce_skill` prompt, induction loop, conditions B / C / E | next |
+| 8 | `induce_skill` prompt, induction loop with feedback, conditions B / C / E, frozen held-out runs, usable-skills hint | done (offline with stub); live runs need API key |
+| 9 | Experiment protocol script, analysis script (tables, McNemar, curves) | next |
 | 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
 | 12–15 | Statistics, plots, report | — |
 
@@ -315,17 +316,53 @@ primitives and agent knowledge clears 200/200 tier-2 seeds.
 
 ### 6.3 Skill induction
 
-Triggered when (a) no applicable action makes progress for N=3 decisions, or
-(b) an obstacle type is encountered that no library skill's precondition
-covers.
+Implemented in week 8: `Dungeon/Skills/SkillInducer.cs` (`SkillInducer`,
+`InductionPolicy`) and `InducePrompts.cs`. Induction runs **before** a
+decision, so a new skill can be chosen immediately.
 
-Prompt contains: goal, current facts, recent failed attempts and their
-outcomes, the DSL grammar, the list of available primitives and skills
-(signatures only), and 2 hand-written example skills from a **different**
-domain (to show format without leaking solutions).
+**Triggers** (checked before every decision, B / C / E only):
 
-Output: one skill in the JSON DSL (§7). Up to 3 attempts; each rejection
-message (validator or test failure) is fed back.
+- *Uncovered obstacle:* a blocking guard in sight (`idle` / `alert`) or a
+  known closed door, and **no library skill is usable on it now** (a skill
+  with one parameter of that kind whose precondition holds for it; for macros,
+  one that names it). "Usable now" rather than "exists for the kind" is
+  deliberate: a door skill that needs a key does not cover a locked door
+  without one, so the agent may learn a lockpick variant.
+- *Stalled:* the last 3 decisions all `failed` or were `invalid` while an
+  obstacle is present.
+
+Each obstacle triggers at most one "uncovered" and one "stalled" request per
+episode. A request gets up to 3 attempts (`--induce-attempts`); an episode at
+most 6 induction calls (`--induce-calls`). Induction calls **do not count as
+decisions** (§9.3) but are counted and billed separately.
+
+**Prompt** (`induce_skill`, max 1 500 output tokens): system part = world
+rules, every action of `A_t` with its description, the skill language (§7.1)
+and its rules, how admission works (20 test rooms, ≥ 16 passes, never caught),
+and example skills for **other tasks** (fetch an item, find the exit) so the
+format is shown without giving away a guard or door solution (tested). User
+part = trigger, target obstacle, current facts, last 6 decisions, the current
+library (signatures and contracts), and every previous attempt with its full
+admission feedback.
+
+**Admission:** each reply is parsed (§7.1), validated and scenario-tested
+(§6.4) against the current `A_t` and library. The first accepted skill is
+registered into `A_t` and the library at once. In C and E the library
+persists to the next episode; in B it is discarded.
+
+**Usable-skills hint:** with a non-empty library, the `choose_action` user
+prompt adds `skills usable now: calm_guard(guard_1), …` — every skill call
+whose precondition holds and whose effect does not hold yet. It is the
+applicable-action filter of §6.1 as a hint (all actions remain callable).
+Calling a skill whose effect already holds is `invalid` (`effect already
+holds`) instead of a silent no-op.
+
+**Pipeline check with the offline stub** (not a result; the stub answers
+with fixed skills): tier 3, seeds 1–20, D_max 40 — A 0 %, B 95 %, C 95 %,
+E 0 %; C learned 2 skills in 20 induction calls, B re-learned 40 in 55; C's
+frozen library on held-out seeds 101–120: 100 % with 0 induction calls. E
+learned nothing: its stub macros reach only 4–14 of 20 test rooms, which is
+itself a hint of the macro-vs-skill gap the real ablation measures.
 
 ### 6.4 Skill verification ("skill unit tests")
 
@@ -501,9 +538,19 @@ definition, because each branch depends on the guard's actual response.
 
 ### 7.3 Macro variant (ablation E)
 
-Same induction pipeline, but the grammar allows only `Call` statements with
-literal arguments bound at creation time — no `params`, `If`, `Until`.
-Contracts are kept so selection works identically.
+Same induction pipeline, prompt variant and validator form
+(`SkillForm.Macro`): only `call` statements, no parameters, no `if` / `until`
+/ `repeat` / `fail`; specific ids (`guard_3`) are allowed and expected.
+Contracts are kept so selection works identically. Macros are scenario-tested
+in the same rooms as skills, with each named guard or door placed under its
+own id.
+
+Because the admission bar was calibrated on closed-loop skills, macros may
+almost never pass it — which is part of the finding, but makes E learn
+nothing at all. **Sensitivity variant:** `--admission valid` admits anything
+the validator accepts (tests still run and are logged). Report E with both
+`tested` and `valid` admission; use `valid` for C too in that comparison so
+the only difference is the skill form.
 
 ## 8. LLM integration
 
@@ -521,11 +568,12 @@ first live run.
 | Prompt | Frequency | Output | State |
 |---|---|---|---|
 | `choose_action` | every decision | `{"action": name, "args": [...], "reason": "..."}` | done (`Dungeon/Agent/Prompts.cs`) |
-| `induce_skill` | rare | one DSL skill | week 8 |
+| `induce_skill` | rare | one DSL skill | done (`Dungeon/Skills/InducePrompts.cs`, §6.3) |
 
 `choose_action` = system part (rules of the world, every action's signature
 and description from `A_t`, reply format, 2 examples) + user part (decisions
-left, current facts §5.6, last 6 decision outcomes). The system part only
+left, current facts §5.6, the usable-skills line when a library exists
+(§6.3), last 6 decision outcomes). The system part only
 changes when `A_t` changes. A test checks over 50 seeds that no hidden entity
 parameter (chances, patience) appears in any prompt. The parser accepts minor
 shape deviations (code fences, numbers as args, args as one string); names and
@@ -619,11 +667,13 @@ precondition change in week 7; the numbers did not change.
 ### 9.2 Seeds and phases
 
 - **Training:** 20 seeds, curriculum in 3 tiers (guard only → door only →
-  guard+door [→ +trap]).
-- **Held-out test:** 20 seeds never seen in training, entity probabilities drawn
-  from the same ranges, different layouts.
-- **Test-time setting:** library frozen; reported twice — induction disabled
-  (pure transfer) and induction enabled.
+  guard+door [→ +trap]). Implemented as consecutive `run` calls where each
+  phase starts from the previous phase's `library.json` (`--skills`).
+- **Held-out test:** 20 seeds never seen in training (seeds ≥ 1001), entity
+  probabilities drawn from the same ranges, different layouts.
+- **Test-time setting:** library frozen (`--freeze`: no induction, library
+  unchanged); reported twice — frozen (pure transfer) and with induction
+  enabled starting from the trained library.
 
 ### 9.3 Budget
 
@@ -631,16 +681,23 @@ precondition change in week 7; the numbers did not change.
   succeeds on ≤ ~40 % of tier-3 tasks — tuned openly, value reported). CLI
   default 40 until calibrated with live runs.
 - Tick budget per episode: T_max = 500 (safety cap).
-- Induction calls do not count as decisions but are capped (≤ 3 per episode)
-  and reported separately.
+- Induction calls do not count as decisions but are capped (≤ 6 per episode,
+  ≤ 3 per request) and reported separately (`induce_calls`,
+  `induce_tokens_*`).
 
 ### 9.4 Metrics (per episode, CSV)
 
 Implemented columns of `metrics.csv` (`EpisodeResult`): `condition, tier,
 seed, success, end_reason, decisions, ticks, invalid_actions, parse_errors,
 llm_calls, cache_hits, tokens_in, tokens_out, action_set_size, library_size,
-skill_invocations, skill_successes, skill_effect_fail, skill_pre_fail`.
-Trace lines also carry `kind` (primitive / helper / skill) and `skill_steps`. Each run
+skill_invocations, skill_successes, skill_effect_fail, skill_pre_fail,
+induce_calls, skills_induced, skills_rejected, induce_tokens_in,
+induce_tokens_out`. Trace lines also carry `kind` (primitive / helper /
+skill), `skill_steps`, and `induction` (all attempts of an induction made
+before that decision). B / C / E runs also write `library.json` (library
+after the run, rewritten after every episode) and `induction.jsonl` (every
+request: seed, decision, attempts with raw reply, acceptance, feedback,
+test passes, tokens). Each run
 directory also has `run.json` (configuration, decider, model, cache mode,
 budget, summary; never the API key) and `traces/seed_N.jsonl` (per decision:
 facts, action, args, reason, outcome, raw reply, tokens).
@@ -653,7 +710,6 @@ Planned columns, added with skills:
 | `decisions_used`, `ticks_used` | efficiency |
 | `llm_calls_choose`, `llm_calls_induce`, `tokens_in/out` | cost; should fall over episodes in C |
 | `max_skill_depth` | expansion over time |
-| `skills_induced`, `skills_rejected` (+ reason) | induction quality |
 | `skill_invocations`, `skill_reuse_new_seed` | reuse / transfer |
 | `wrong_skill_selected` | skill shadowing indicator |
 | `failure_reason` | hostile / trap / budget / stuck |
@@ -725,9 +781,11 @@ Dungeon/                  class library, no MARS dependency
   Skills/HandwrittenSkills.cs + Library/handwritten.json ✓ condition D / RD library
   Skills/SkillValidator.cs ✓ static checks, closed-loop / macro form
   Skills/ScenarioTester.cs ✓ micro-room tests, SkillAdmission + feedback
+  Skills/InducePrompts.cs ✓ induce_skill prompt (skill and macro variants)
+  Skills/SkillInducer.cs  ✓ induction with feedback rounds, InductionPolicy (triggers, caps)
+  Agent/UsableSkills.cs   ✓ "skills usable now" hint
+  Llm/JsonText.cs         ✓ code-fence stripping
   Skills/Library.cs       registry + persistence
-  Llm/Prompts (induce_skill)
-  Agent/LlmAgent: induction trigger
 Dungeon.Cli/              ✓ play / render / run / skills
 Dungeon.Tests/            ✓ xUnit
 Visualization/            PyGame (to be extended: fog of war, entities, skill log)
@@ -767,6 +825,8 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Validator | each rejection rule has a fixture with the expected message; library valid; macro form | unit |
 | ScenarioTester | accepts v1 / v3, rejects v2 on default seeds; pinned calibration counts over 40 blocks; rooms satisfy pre; deterministic; paired rooms; no side effects | unit, calibration |
 | Admission | invalid skills not tested; feedback lists errors or all 20 rooms | unit |
+| Induction | prompt examples valid and solution-free; no hidden parameters over 30 seeds; feedback rounds carry all earlier attempts; give-up; macro form; valid-only admission; triggers, per-obstacle and per-episode caps, stall | unit |
+| B / C / E | C library persists and only grows; B resets; frozen library used on held-out seeds with 0 induction; replayed induction run reproduces library and metrics | integration |
 
 No test touches the network. The LLM path is exercised with scripted clients
 (fixed replies), the stub provider and a stubbed HTTP handler; these are never

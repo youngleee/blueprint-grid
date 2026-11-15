@@ -10,7 +10,22 @@ public static class SkillActions
         new(skill.Name, ActionKind.Skill,
             skill.Params.Select(p => new ActionParam(p.Name, p.Type)).ToList(),
             Describe(skill),
-            (ctx, space, args) => SkillInterpreter.Run(skill, ctx, space, args, limits));
+            (ctx, space, args) => SkillInterpreter.Run(skill, ctx, space, args, limits),
+            (facts, args) => PreHolds(skill, facts, args) && !EffectHolds(skill, facts, args));
+
+    public static bool EffectHolds(Skill skill, FactSet facts, IReadOnlyList<string> args) =>
+        skill.Effect.All(c => c.Holds(facts, Bind(skill, args)));
+
+    public static bool PreHolds(Skill skill, FactSet facts, IReadOnlyList<string> args) =>
+        skill.Pre.All(c => c.Holds(facts, Bind(skill, args)));
+
+    private static Dictionary<string, string> Bind(Skill skill, IReadOnlyList<string> args)
+    {
+        var bindings = new Dictionary<string, string>();
+        for (var i = 0; i < skill.Params.Count && i < args.Count; i++)
+            bindings[skill.Params[i].Name] = args[i];
+        return bindings;
+    }
 
     // What the LLM is told about a skill: its purpose and its contract, not its body.
     public static string Describe(Skill skill)

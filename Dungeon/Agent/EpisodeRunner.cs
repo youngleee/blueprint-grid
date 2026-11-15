@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dungeon.Core;
+using Dungeon.Skills;
 
 namespace Dungeon.Agent;
 
@@ -22,7 +23,8 @@ public sealed record StepTrace(
     int OutputTokens,
     bool FromCache,
     string Kind,
-    IReadOnlyList<string>? SkillSteps);
+    IReadOnlyList<string>? SkillSteps,
+    IReadOnlyList<InductionAttempt>? Induction = null);
 
 // One row of metrics.csv (PLAN §9.4).
 public sealed record EpisodeResult(
@@ -44,15 +46,22 @@ public sealed record EpisodeResult(
     int SkillInvocations,
     int SkillSuccesses,
     int SkillEffectFailures,
-    int SkillPreFailures)
+    int SkillPreFailures,
+    int InduceCalls = 0,
+    int SkillsInduced = 0,
+    int SkillsRejected = 0,
+    long InduceTokensIn = 0,
+    long InduceTokensOut = 0)
 {
     public static readonly string CsvHeader =
         "condition,tier,seed,success,end_reason,decisions,ticks,invalid_actions,parse_errors,llm_calls,cache_hits,tokens_in,tokens_out," +
-        "action_set_size,library_size,skill_invocations,skill_successes,skill_effect_fail,skill_pre_fail";
+        "action_set_size,library_size,skill_invocations,skill_successes,skill_effect_fail,skill_pre_fail," +
+        "induce_calls,skills_induced,skills_rejected,induce_tokens_in,induce_tokens_out";
 
     public string ToCsv() =>
         $"{Condition},{Tier},{Seed},{(Success ? 1 : 0)},{Csv(EndReason)},{Decisions},{Ticks},{InvalidActions},{ParseErrors},{LlmCalls},{CacheHits},{InputTokens},{OutputTokens}," +
-        $"{ActionSetSize},{LibrarySize},{SkillInvocations},{SkillSuccesses},{SkillEffectFailures},{SkillPreFailures}";
+        $"{ActionSetSize},{LibrarySize},{SkillInvocations},{SkillSuccesses},{SkillEffectFailures},{SkillPreFailures}," +
+        $"{InduceCalls},{SkillsInduced},{SkillsRejected},{InduceTokensIn},{InduceTokensOut}";
 
     private static string Csv(string s) => s.Contains(',') || s.Contains('"') ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
 }
@@ -68,9 +77,16 @@ public sealed class EpisodeRunner
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    // With an induction policy, the agent may add skills to `space` and `library` during the episode
+    // (conditions B, C, E). The caller decides whether they survive the episode.
     public static async Task<(EpisodeResult Result, IReadOnlyList<StepTrace> Trace)> RunAsync(
-        EpisodeConfig config, string condition, IDecider decider, ActionSpace space, CancellationToken ct = default)
+        EpisodeConfig config, string condition, IDecider decider, ActionSpace space, CancellationToken ct = default,
+        InductionPolicy? induction = null, List<Skill>? library = null)
     {
+        library ??= [];
+        induction?.StartEpisode();
+        int induceCalls = 0, induced = 0, rejected = 0;
+        long induceIn = 0, induceOut = 0;
         var world = new DungeonWorld(ScenarioGenerator.Generate(config.Seed, config.Scenario), config.Seed);
         var ctx = new AgentContext(world);
         var history = new List<string>();
@@ -88,6 +104,21 @@ public sealed class EpisodeRunner
             if (ctx.Tick >= config.MaxTicks) { endReason = "tick_budget"; break; }
 
             var facts = FactSet.From(ctx);
+            IReadOnlyList<InductionAttempt>? inductionTrace = null;
+            if (induction is not null)
+            {
+                var ir = await induction.MaybeInduceAsync(facts, history, space, library, ct);
+                if (ir is not null)
+                {
+                    inductionTrace = ir.Attempts;
+                    induceCalls += ir.Attempts.Count;
+                    induceIn += ir.Attempts.Sum(a => a.InputTokens);
+                    induceOut += ir.Attempts.Sum(a => a.OutputTokens);
+                    if (ir.Accepted is not null) induced++;
+                    rejected += ir.Attempts.Count(a => !a.Accepted);
+                    facts = FactSet.From(ctx);
+                }
+            }
             var record = await decider.DecideAsync(facts, space, history, config.MaxDecisions - d + 1, ct);
             if (record.RawReply is not null)
             {
@@ -125,12 +156,14 @@ public sealed class EpisodeRunner
             trace.Add(new StepTrace(d, before, ctx.Tick, facts.ToText(), record.Decision.Action, record.Decision.Args,
                 record.Decision.Reason, outcome.ToString(), outcome.Status, record.RawReply, record.ParseError,
                 record.InputTokens, record.OutputTokens, record.FromCache,
-                kind?.ToString().ToLowerInvariant() ?? "unknown", outcome.Steps.Count > 0 ? outcome.Steps : null));
+                kind?.ToString().ToLowerInvariant() ?? "unknown", outcome.Steps.Count > 0 ? outcome.Steps : null,
+                inductionTrace));
         }
 
         var result = new EpisodeResult(condition, config.Tier, config.Seed, endReason == "exit", endReason,
             trace.Count, ctx.Tick, invalid, parseErrors, calls, hits, tokIn, tokOut, space.Actions.Count,
-            space.Actions.Count(a => a.Kind == ActionKind.Skill), skillCalls, skillOk, skillEffectFail, skillPreFail);
+            space.Actions.Count(a => a.Kind == ActionKind.Skill), skillCalls, skillOk, skillEffectFail, skillPreFail,
+            induceCalls, induced, rejected, induceIn, induceOut);
         return (result, trace);
     }
 }

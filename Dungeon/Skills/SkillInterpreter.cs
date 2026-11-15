@@ -37,9 +37,13 @@ public sealed class SkillInterpreter
         for (var i = 0; i < skill.Params.Count; i++)
             bindings[skill.Params[i].Name] = args[i];
 
-        var unmet = skill.Pre.FirstOrDefault(c => !c.Holds(FactSet.From(ctx), bindings));
+        var start = FactSet.From(ctx);
+        var unmet = skill.Pre.FirstOrDefault(c => !c.Holds(start, bindings));
         if (unmet is not null)
             return new ActionOutcome(call, "invalid", 0, $"precondition not met: {unmet.Text}");
+        // Running a skill whose goal is already reached would waste a decision silently.
+        if (skill.Effect.Count > 0 && skill.Effect.All(c => c.Holds(start, bindings)))
+            return new ActionOutcome(call, "invalid", 0, $"effect already holds: {string.Join(" and ", skill.Effect.Select(c => c.Text))}");
 
         var interpreter = new SkillInterpreter(ctx, space, l);
         ctx.SkillDepth++;

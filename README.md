@@ -6,13 +6,14 @@ action set with verified, parameterized, closed-loop skills. The research plan,
 definitions and current status are in [`docs/PLAN.md`](docs/PLAN.md).
 
 **Status:** environment, agent observation layer, LLM integration (client,
-record/replay cache, budget), the skill language and interpreter, and the
-conditions A, R, D and RD are implemented and tested offline. First result:
+record/replay cache, budget), the skill language, interpreter, validator and
+scenario tester, LLM skill induction, and all conditions (A, R, D, RD, B, C,
+E) are implemented and tested offline. First result:
 a hand-written closed-loop skill raises the rule baseline from 87.5 % to
 95.5 % on tier 3 (200 paired seeds, p = 0.005). Skills are validated and
 tested in generated rooms before use, with thresholds calibrated on drafts of
-known quality. Next: LLM skill induction. See the status table in
-`docs/PLAN.md`.
+known quality. Next: the experiment protocol and analysis scripts; then live runs with a real
+model. See the status table in `docs/PLAN.md`.
 
 ## Project structure
 
@@ -48,6 +49,7 @@ dotnet run --project Dungeon.Cli -- run --condition R --tier 3 --seeds 1-20     
 dotnet run --project Dungeon.Cli -- run --condition RD --tier 3 --seeds 1-20             # same rules + hand-written skills
 dotnet run --project Dungeon.Cli -- run --condition A --tier 3 --seeds 1-5 --provider stub  # LLM pipeline, offline
 dotnet run --project Dungeon.Cli -- run --condition A --tier 3 --seeds 1-5               # real model (needs key)
+dotnet run --project Dungeon.Cli -- run --condition C --tier 3 --seeds 1-20 --provider stub # skill induction, offline
 ```
 
 Details, manual test cases and run outputs: [`docs/TESTING.md`](docs/TESTING.md).

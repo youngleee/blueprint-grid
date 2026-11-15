@@ -30,13 +30,18 @@ public static class Prompts
         return sb.ToString();
     }
 
-    public static string ChooseActionUser(FactSet facts, IReadOnlyList<string> history, int decisionsLeft)
+    // `usable` (optional): skill calls whose precondition holds now, e.g. "calm_guard(guard_1)". It is
+    // the applicable-action hint of PLAN §6.1; the system prompt still lists every action.
+    public static string ChooseActionUser(FactSet facts, IReadOnlyList<string> history, int decisionsLeft,
+        IReadOnlyList<string>? usable = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"Decisions left: {decisionsLeft}");
         sb.AppendLine();
         sb.AppendLine("Current situation:");
         sb.AppendLine(facts.ToText());
+        if (usable is not null)
+            sb.AppendLine($"skills usable now: {(usable.Count == 0 ? "none" : string.Join(", ", usable))}");
         if (history.Count > 0)
         {
             sb.AppendLine();

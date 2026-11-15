@@ -45,6 +45,10 @@ public sealed record ScenarioReport(string Skill, IReadOnlyList<ScenarioCase> Ca
 // dungeons; the agent holds a random subset of items. A room is used only if the skill's
 // precondition holds and its effect does not hold yet (otherwise the test proves nothing).
 // Test seeds are the same for every skill, so pass rates of different skills are paired.
+//
+// Macros (ablation E) have no parameters but name entities directly ("guard_3"). They are tested in
+// the same rooms, with each named guard / door placed under its own id instead of a parameter
+// slot, so they face exactly the same situations as a closed-loop skill for that kind of obstacle.
 public static class ScenarioTester
 {
     private const int Width = 19, Height = 7, CorridorY = 3, CorridorStart = 7, CorridorEnd = 11;
@@ -58,7 +62,8 @@ public static class ScenarioTester
         if (testSpace.Get(skill.Name) is null)
             testSpace.Register(SkillActions.ToAction(skill));
 
-        if (skill.Params.Count(p => p.Type is ParamType.Guard or ParamType.Door or ParamType.Target) > CorridorEnd - CorridorStart + 1)
+        var slots = Slots(skill);
+        if (slots.Count(s => s.Type is ParamType.Guard or ParamType.Door or ParamType.Target) > CorridorEnd - CorridorStart + 1)
             return new ScenarioReport(skill.Name, [], o.Required, o.MaxLost, 0, "too many entity parameters for a test room");
 
         var cases = new List<ScenarioCase>();
@@ -66,7 +71,8 @@ public static class ScenarioTester
         while (cases.Count < o.Count && attempts < o.MaxAttempts)
         {
             var seed = o.SeedBase + attempts++;
-            var (world, args, setup) = Build(skill, seed, o, t);
+            var (world, values, setup) = Build(slots, seed, o, t);
+            var args = values.Take(skill.Params.Count).ToList();
             var ctx = new AgentContext(world);
             var facts = FactSet.From(ctx);
             var bindings = skill.Params.Select((p, i) => (p.Name, args[i])).ToDictionary(x => x.Name, x => x.Item2);
@@ -88,7 +94,21 @@ public static class ScenarioTester
         return new ScenarioReport(skill.Name, cases, o.Required, o.MaxLost, attempts, error);
     }
 
-    private static (DungeonWorld World, List<string> Args, string Setup) Build(Skill skill, int seed,
+    private sealed record Slot(ParamType Type, string? FixedId);
+
+    // One slot per parameter; for a parameterless skill, one per guard / door id it names.
+    private static List<Slot> Slots(Skill skill)
+    {
+        if (skill.Params.Count > 0)
+            return skill.Params.Select(p => new Slot(p.Type, null)).ToList();
+        var json = SkillJson.Serialize(skill, indented: false);
+        return System.Text.RegularExpressions.Regex.Matches(json, @"\b(guard|door)_\d+\b")
+            .Select(m => m.Value).Distinct()
+            .Select(id => new Slot(id.StartsWith("guard") ? ParamType.Guard : ParamType.Door, id))
+            .ToList();
+    }
+
+    private static (DungeonWorld World, List<string> Args, string Setup) Build(IReadOnlyList<Slot> slots, int seed,
         ScenarioTestOptions o, ScenarioOptions t)
     {
         var rng = Rng.ForStream(seed, "skilltest");
@@ -105,13 +125,13 @@ public static class ScenarioTester
         var slot = CorridorStart;
         var itemCount = 0;
 
-        foreach (var p in skill.Params)
+        foreach (var p in slots)
         {
             switch (p.Type)
             {
                 case ParamType.Guard or ParamType.Target:
                 {
-                    var id = $"guard_{guards.Count + 1}";
+                    var id = p.FixedId ?? $"guard_{guards.Count + 1}";
                     guards.Add(new Guard(id, new Cell(slot++, CorridorY), new GuardTraits(
                         rng.Range(t.CalmMin, t.CalmMax), rng.Range(t.FoodMin, t.FoodMax),
                         rng.Range(t.CoinMin, t.CoinMax), rng.Range(t.ThrowMin, t.ThrowMax),
@@ -122,7 +142,7 @@ public static class ScenarioTester
                 }
                 case ParamType.Door:
                 {
-                    var id = $"door_{doors.Count + 1}";
+                    var id = p.FixedId ?? $"door_{doors.Count + 1}";
                     var locked = rng.Chance(0.5);
                     doors.Add(new Door(id, new Cell(slot++, CorridorY), locked ? DoorKind.Locked : DoorKind.Jammed,
                         locked ? rng.Range(t.PickMin, t.PickMax) : 0, locked ? 0 : rng.Range(t.PushMin, t.PushMax)));

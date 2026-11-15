@@ -16,7 +16,7 @@ public static class DecisionParser
     public static bool TryParse(string text, out Decision decision, out string error)
     {
         decision = new Decision("", [], "");
-        var json = StripFences(text.Trim());
+        var json = Dungeon.Llm.JsonText.StripFences(text);
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -64,14 +64,6 @@ public static class DecisionParser
         }
     }
 
-    private static string StripFences(string s)
-    {
-        if (!s.StartsWith("```"))
-            return s;
-        var start = s.IndexOf('\n');
-        var end = s.LastIndexOf("```", StringComparison.Ordinal);
-        return start >= 0 && end > start ? s[(start + 1)..end].Trim() : s.Trim('`');
-    }
 
     private static JsonElement? Find(JsonElement root, string name)
     {

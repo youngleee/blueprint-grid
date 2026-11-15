@@ -8,9 +8,11 @@ using Dungeon.Skills;
 //   dotnet run --project Dungeon.Cli -- play   [--seed N] [--tier 1|2|3] [--sight R] [--skills handwritten|FILE]
 //   dotnet run --project Dungeon.Cli -- render [--seed N] [--tier 1|2|3]
 //   dotnet run --project Dungeon.Cli -- skills [--file FILE] [--test] [--macro]   (print, validate and test a library)
-//   dotnet run --project Dungeon.Cli -- run    --condition A|R|D|RD [--tier 3] [--seeds 1-20] [--max-decisions 40]
+//   dotnet run --project Dungeon.Cli -- run    --condition A|R|D|RD|B|C|E [--tier 3] [--seeds 1-20] [--max-decisions 40]
 //                                              [--llm live|record|replay] [--provider openai|stub] [--out DIR]
 //                                              [--max-calls N] [--max-tokens N] [--env FILE] [--skills FILE]
+//                                              [--freeze] [--induce-attempts N] [--induce-calls N]
+//                                              [--admission tested|valid]   (B, C, E)
 //   echo "e\ne\nstate" | dotnet run --project Dungeon.Cli -- play --seed 1   (scripted)
 
 var command = args.FirstOrDefault() ?? "help";
@@ -84,7 +86,7 @@ void Play()
 
 async Task<int> Run()
 {
-    var condition = (Option("--condition") ?? throw new ArgumentException("--condition is required (A, R, D or RD)")).ToUpperInvariant();
+    var condition = (Option("--condition") ?? throw new ArgumentException("--condition is required (A, R, D, RD, B, C or E)")).ToUpperInvariant();
     if (!ExperimentRunner.Conditions.Contains(condition))
         throw new ArgumentException($"condition '{condition}' is not implemented yet (available: {string.Join(", ", ExperimentRunner.Conditions)})");
     var tier = Option("--tier") ?? "3";
@@ -105,6 +107,7 @@ async Task<int> Run()
     var cacheDir = Path.Combine(settings.CacheDir, provider);
 
     IDecider decider;
+    ILlmClient? llm = null;
     if (!ExperimentRunner.UsesLlm(condition))
     {
         decider = new RuleBasedDecider();
@@ -121,23 +124,39 @@ async Task<int> Run()
             _ => throw new ArgumentException($"unknown provider '{provider}' (openai or stub)")
         };
         var metered = network is null ? null : new MeteredClient(network, budget);
-        decider = new LlmDecider(new CachingClient(metered, cacheDir, mode), settings.Model, settings.Temperature);
+        llm = new CachingClient(metered, cacheDir, mode);
+        decider = new LlmDecider(llm, settings.Model, settings.Temperature);
     }
 
     Console.WriteLine($"condition {condition}, tier {tier}, {seeds.Count} seeds, max {maxDecisions} decisions");
     Console.WriteLine($"decider {decider.Name}, {(!ExperimentRunner.UsesLlm(condition) ? "no LLM" : $"{settings.Describe()} provider={provider} cache={mode.ToString().ToLowerInvariant()} ({cacheDir})")}");
     Console.WriteLine($"output {outDir}\n");
 
-    var librarySource = Option("--skills") ?? "handwritten";
-    if (librarySource != "handwritten" && condition is not ("D" or "RD"))
-        throw new ArgumentException("--skills only applies to conditions D and RD");
+    // D / RD: fixed library (default: built-in). B / C / E: starting library (default: empty), e.g. the
+    // library.json of a training run together with --freeze for held-out evaluation.
+    var induces = ExperimentRunner.Induces(condition);
+    var librarySource = Option("--skills") ?? (induces ? "none" : "handwritten");
+    if (librarySource is not ("handwritten" or "none") && condition is not ("D" or "RD" or "C" or "E"))
+        throw new ArgumentException("--skills only applies to conditions D, RD, C and E");
+    var freeze = args.Contains("--freeze");
+    var admission = (Option("--admission") ?? "tested") switch
+    {
+        "tested" => AdmissionMode.Tested,
+        "valid" => AdmissionMode.Valid,
+        var a => throw new ArgumentException($"--admission must be tested or valid, not '{a}'")
+    };
+    var inducer = induces && llm is not null
+        ? new SkillInducer(llm, settings.Model, settings.Temperature, ExperimentRunner.FormFor(condition), admission: admission)
+        : null;
     var summary = await ExperimentRunner.RunAsync(new ExperimentConfig(condition, tier, seeds, maxDecisions, outDir,
-        provider, settings.Model, settings.Temperature, mode, cacheDir, budget, LoadSkills(librarySource), librarySource),
-        decider, Console.WriteLine);
+        provider, settings.Model, settings.Temperature, mode, cacheDir, budget, LoadSkills(librarySource), librarySource,
+        freeze, IntOption("--induce-attempts", 3), IntOption("--induce-calls", 6), Admission: admission),
+        decider, Console.WriteLine, inducer: inducer);
 
     Console.WriteLine($"\nsuccess {summary.Successes}/{summary.Episodes} ({summary.SuccessRate:P0}), " +
                       $"mean decisions {summary.MeanDecisions:F1}, LLM calls {summary.LlmCalls} (cached {summary.CacheHits}), " +
-                      $"tokens in {summary.InputTokens} out {summary.OutputTokens}");
+                      $"tokens in {summary.InputTokens} out {summary.OutputTokens}" +
+                      (induces ? $"\nskills induced {summary.SkillsInduced} in {summary.InduceCalls} induction calls, final library {summary.FinalLibrarySize}" : ""));
     if (summary.AbortedReason is not null)
     {
         Console.WriteLine($"ABORTED: {summary.AbortedReason}");

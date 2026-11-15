@@ -31,7 +31,9 @@ before changing behaviour.
     (closed-loop execution + contracts), `SkillActions` (skill → action),
     `HandwrittenSkills` + `Library/handwritten.json` (embedded, conditions D/RD),
     `SkillValidator` (static checks, closed-loop / macro form), `ScenarioTester`
-    (micro-room tests) and `SkillAdmission` (both + feedback text).
+    (micro-room tests) and `SkillAdmission` (both + feedback text),
+    `InducePrompts` (induce_skill prompt), `SkillInducer` + `InductionPolicy`
+    (when to induce, feedback rounds, caps, registration).
 - `Dungeon.Cli/`: `play`, `render`, `run`, `skills`.
 - `Dungeon.Tests/`: xUnit. `LlmFakes.cs` has the scripted client and HTTP stub.
   `Fixtures/calm_guard_v1|v2|v3|blind.json` are skill drafts with known
@@ -83,6 +85,12 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
   calibration in PLAN §6.4; `ScenarioTesterTests` pins the counts. Changing
   the tester, the room generator or the defaults means re-running that
   calibration and updating §6.4.
+- **Induction never executes model output.** A reply becomes a `Skill` only
+  through `SkillJson`, and joins `A_t` only after `SkillAdmission` accepts it.
+  Prompt changes change cache keys (see above).
+- **Condition semantics live in `ExperimentRunner`.** A/R/D/RD: fixed action
+  set per episode. B: induction, library reset each episode. C/E: induction,
+  library persists; E uses `SkillForm.Macro`. `--freeze` disables induction.
 - **No network in tests.** Use `ScriptedLlmClient`, `StubHandler` or
   `StubLlmClient`. Never log or persist the API key.
 - **Clone is deep.** Every new piece of mutable world state must be copied in

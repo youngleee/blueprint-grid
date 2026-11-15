@@ -108,7 +108,7 @@ dotnet run --project Dungeon.Cli -- run --condition A|R [options]
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--condition` | required | `A` LLM, primitives + helpers · `R` rules, no LLM · `D` LLM + hand-written skills · `RD` rules + hand-written skills |
+| `--condition` | required | `A` LLM, primitives + helpers · `R` rules, no LLM · `D` LLM + hand-written skills · `RD` rules + hand-written skills · `B` LLM + induction, library reset per episode · `C` LLM + induction, persistent library · `E` as C with macros only |
 | `--tier` | `3` | `1`, `2`, `3` |
 | `--seeds` | `1-20` | `1-20`, `1,4,9`, `5` |
 | `--max-decisions` | `40` | decision budget D_max per episode |
@@ -117,14 +117,22 @@ dotnet run --project Dungeon.Cli -- run --condition A|R [options]
 | `--max-calls`, `--max-tokens` | `2000`, `3000000` | hard caps on real API usage per run |
 | `--out` | `runs/<time>_<cond>_tier<N>` | output directory |
 | `--env` | `./.env` (or parent dirs) | settings file |
-| `--skills` | `handwritten` | for D and RD only: a skill library JSON file instead of the built-in one |
+| `--skills` | D / RD: `handwritten`; C / E: `none` | D, RD: fixed library file instead of the built-in one. C, E: starting library (e.g. a previous run's `library.json`) |
+| `--freeze` | off | B / C / E: no induction, library unchanged (held-out evaluation) |
+| `--induce-attempts` | `3` | feedback rounds per induction request |
+| `--induce-calls` | `6` | induction LLM calls per episode |
+| `--admission` | `tested` | `tested`: validator + scenario tests must pass · `valid`: validator only (tests logged); sensitivity variant for E |
 
 Output directory:
 
 - `run.json` — configuration, decider, model, cache mode, budget, summary. Never the key.
 - `metrics.csv` — one row per episode (columns listed in `docs/PLAN.md` §9.4).
 - `traces/seed_N.jsonl` — one JSON line per decision: facts, action, args,
-  reason, outcome, raw model reply, tokens, cache hit.
+  reason, outcome, raw model reply, tokens, cache hit, skill steps, and any
+  induction made before the decision.
+- B / C / E only: `library.json` (skill library after the run; rewritten after
+  each episode) and `induction.jsonl` (every induction request with all
+  attempts, raw replies, feedback and tokens).
 
 ### Run cases
 
@@ -141,3 +149,8 @@ Output directory:
 | R6 | First live run | `.env` with key, `run --condition A --tier 3 --seeds 1-3 --max-calls 150` | 3 episodes; check `traces/` for valid JSON replies, tokens per decision in `metrics.csv` |
 | R7 | Budget cap | R6 with `--max-calls 5` | stops after 5 real calls with `budget … reached` |
 | R8 | Cache saves money | rerun R6 unchanged | all calls `cached`, no new tokens billed |
+| R9 | Induction pipeline, offline | `run --condition C --provider stub --tier 3 --seeds 1-20 --out runs/stubC` | ~19/20; `skills induced 2`; `library.json` has 2 skills; `induction.jsonl` shows accepted and rejected attempts with feedback |
+| R10 | B resets, C keeps | same with `--condition B` | similar success but ~40 skills induced and `final library 0` |
+| R11 | Frozen held-out | `run --condition C --freeze --skills runs/stubC/library.json --provider stub --seeds 101-120` | 0 induction calls, library size 2 in every row |
+| R12 | Macro ablation | `run --condition E --provider stub --seeds 1-20`, then with `--admission valid` | `tested`: 0 macros admitted (they fail the room tests); `valid`: some admitted |
+| R13 | First live induction | `.env` with key, `run --condition C --tier 1 --seeds 1-5 --max-calls 300` | `induction.jsonl`: real model replies, feedback rounds; check whether any skill is accepted and what it looks like (`skills --test --file <out>/library.json`) |
