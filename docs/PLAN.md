@@ -16,7 +16,8 @@ Update this table in the same commit as the work it describes.
 | 4b | MARS host for `DungeonWorld`, PyGame update | deferred to week 13 (demo only; experiment does not need MARS) |
 | 5 | Action space, LLM client + cache + budget, `choose_action`, conditions A and R, experiment runner | done (offline); live calibration needs API key |
 | 6 | Skill DSL, interpreter, contracts, skills in `A_t`, hand-written library, conditions D and RD | done; first evidence in §9.1 |
-| 6–8 | Skill DSL, interpreter, validator, scenario tester, induction | — |
+| 7 | Skill validator, scenario tester (calibrated), admission feedback, `skills --test`, `run --skills` | done |
+| 8 | `induce_skill` prompt, induction loop, conditions B / C / E | next |
 | 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
 | 12–15 | Statistics, plots, report | — |
 
@@ -329,20 +330,62 @@ message (validator or test failure) is fed back.
 ### 6.4 Skill verification ("skill unit tests")
 
 Verifying a skill in a clone of the real world would leak hidden information
-(unseen rooms, future random outcomes). Instead:
+(unseen rooms, future random outcomes). Instead (implemented in week 7,
+`Dungeon/Skills/SkillValidator.cs` and `ScenarioTester.cs`; `SkillAdmission`
+runs both):
 
-1. **Static validation:** schema valid; only known actions/skills called;
-   parameter types match; every `until`/`repeat` has `max ≤ 5`; nesting depth
-   ≤ 3; no recursion; total primitive bound ≤ 30 ticks.
-2. **Generated scenario tests:** from the skill's precondition, generate k=5
-   micro-rooms (fresh seeds, randomized entity probabilities) in which the
-   precondition holds. Run the skill. **Accept if the declared effect holds in
-   ≥ 3/5** (threshold configurable; reported).
-3. **Dedup:** reject if an existing skill has the same signature and
-   structurally equal body.
+1. **Static validation** (`SkillValidator`, reports *all* errors at once with
+   locations):
+   - every call names an action of `A_t` (no self-calls), with the right
+     argument count (`pos(x)` counts as two) and argument types;
+   - every parameter is declared and used; no fact word as parameter name;
+   - no specific entity ids (`guard_1`) — use a parameter so the skill
+     generalises;
+   - at least one effect condition;
+   - loops `max`/`repeat` ≤ 6, nesting ≤ 5 levels, worst-case calls ≤ 40;
+   - **closed-loop rule:** at least one `if`/`until` whose condition reads
+     facts (`if: "true"` does not count). A fixed sequence is rejected as a
+     macro. For ablation E the inverse *macro form* applies (§7.3);
+   - not a renamed copy of an existing skill (same params, contract, body).
+2. **Scenario tests** (`ScenarioTester`): generated micro-rooms — start room,
+   5-cell corridor, exit room — one entity per skill parameter at the corridor
+   entrance; entity traits drawn from the same ranges as real dungeons; the
+   agent holds a random subset of food / coin / lockpick and starts in sight at
+   distance 3 (80 %), 2 (13 %) or 1 (7 %), matching first sightings in real
+   tier-3 episodes. A room is used only if the precondition holds **and the
+   effect does not hold yet** (otherwise the test proves nothing). Test seeds
+   are fixed and identical for every skill, so pass rates are paired.
+   **Accept if the effect is reached in ≥ 16 of 20 rooms and no room ends in
+   a lost episode.**
+3. **Feedback:** on rejection, `AdmissionResult.Feedback()` lists either the
+   validator errors or every test room (setup → outcome). Week 8 feeds this
+   text back to the LLM.
 
-Accepted skills are registered and persisted. Rejected skills are logged with
-reason.
+**Calibration** (the threshold is not a guess). Three hand-written drafts of
+`calm_guard` (`Dungeon.Tests/Fixtures/`) with known full-episode quality
+(RD, tier 3, 200 seeds): v1 97.5 %, v3 95.5 %, v2 85.5 % (R: 87.5 %). Each was
+tested on 40 disjoint blocks of 20 rooms:
+
+| Rule | v1 accepted | v3 accepted | v2 (weak) accepted |
+|---|---|---|---|
+| pass rate ≥ 17/20 only | 36/40 | 39/40 | 19/40 |
+| pass rate ≥ 16/20 only | 39/40 | 40/40 | 29/40 |
+| **≥ 16/20 and no lost episode** (chosen) | 39/40 | 37/40 | **4/40** |
+
+Pass rates barely separate the drafts (median 94 / 94 / 82 %); *losing the
+episode* does — v2 lost an episode in 20/20 blocks, v1 in 0/20. Hence the
+zero-loss rule. Measured error rates on these drafts: a good skill is wrongly
+rejected in ~5 % of seed blocks, a weak one wrongly accepted in ~10 %. The
+default test seeds accept v1 and v3 and reject v2; `ScenarioTesterTests`
+pins all counts above. Testing one skill takes ~10 ms.
+
+The tester also found a flaw in a hand-written skill: `open_door` was
+"applicable" to locked doors without key or lockpick, where it can never
+succeed (accepted in only 31/40 blocks). Its precondition now requires the
+means (`type(d) == jammed or has_key(d) or has(lockpick)`): 40/40.
+
+Accepted skills are registered; persistence across episodes comes with
+condition C (week 9).
 
 ### 6.5 Runtime contract checks
 
@@ -399,8 +442,10 @@ the body.
 
 ### 7.2 Hand-written library (condition D, `Dungeon/Skills/Library/handwritten.json`)
 
-`open_door(d)`: walk next to `d`; until open (max 6): key if held, else
-lockpick if locked, else push if jammed, else `fail`.
+`open_door(d)`: precondition `known(d)`, `state(d) == closed` and
+`type(d) == jammed or has_key(d) or has(lockpick)`; walk next to `d`; until
+open (max 6): key if held, else lockpick if locked, else push if jammed, else
+`fail`.
 
 `calm_guard(g)` — the skill that answers R's failure mode:
 
@@ -424,7 +469,7 @@ lockpick if locked, else push if jammed, else `fail`.
 }
 ```
 
-Design notes, each learned from a failing run, not assumed:
+Design notes, each from a run, not assumed:
 
 1. *Throw from range first.* Food thrown from ≤ 3 cells distracts without
    spending patience; giving it needs adjacency, where a refusal plus the step
@@ -433,6 +478,22 @@ Design notes, each learned from a failing run, not assumed:
    is the closed loop that a fixed sequence lacks.
 3. *Coin last.* Adjacent bribes are the riskiest attempt; used only when
    throwing and talking failed.
+
+**Draft history (corrected in week 7; the week-6 notes had v1 and v2 mixed
+up).** Three drafts were written, all kept as test fixtures in
+`Dungeon.Tests/Fixtures/`:
+
+| Draft | Strategy | RD tier 3 (200 seeds) | vs R (exact McNemar) |
+|---|---|---|---|
+| v1 | loop: walk up, coin / food / talk, retreat if still alert | 97.5 % | p = 0.0001 |
+| v2 | coin once, food once (both adjacent), then talk | 85.5 % | p = 0.58 (no better) |
+| v3 (library) | throw food from range, talk with retreat, coin last | 95.5 % | p = 0.005 |
+
+v2 was written to satisfy a unit test that encoded a wrong strategy ("give
+food, and on refusal switch to talking"). Lesson: unit tests check
+*mechanics*, only outcomes check *quality*. v3 stays the library skill because
+it is the most deliberate design and is the result reported; v1 scoring
+slightly higher shows the hand-written reference is not tuned to the ceiling.
 
 Over 200 tier-3 seeds the same skill took **25 distinct step paths**
 (e.g. `throw`; `talk`; `talk > retreat > go_to > talk`), all from one
@@ -548,11 +609,12 @@ This is the first evidence that a closed-loop, parameterized skill raises
 success under the same decision budget (§3 property 6) — here with a
 hand-written skill. Remaining RD failures (8/200 on tier 3) are a talk refusal
 with patience already low before the skill starts. Whether an LLM can
-*induce* such a skill (C) is the open question for weeks 7–9.
+*induce* such a skill (C) is the open question for weeks 8–9.
 
-Caveat: the first, untested version of `calm_guard` was not better than R
-(85 % vs 88 % on tier 3). Skill quality matters as much as skill structure;
-week 7's scenario tests exist to catch exactly that.
+Caveat: one of three hand-written drafts (v2, §7.2) was no better than R.
+Skill quality matters as much as skill structure; the week-7 scenario tests
+reject that draft (§6.4). The table above was re-run after the `open_door`
+precondition change in week 7; the numbers did not change.
 
 ### 9.2 Seeds and phases
 
@@ -661,8 +723,8 @@ Dungeon/                  class library, no MARS dependency
   Skills/SkillInterpreter.cs ✓ closed-loop execution, contracts, limits
   Skills/SkillActions.cs  ✓ skill → action of A_t, LLM-facing description
   Skills/HandwrittenSkills.cs + Library/handwritten.json ✓ condition D / RD library
-  Skills/Validator.cs     static checks
-  Skills/ScenarioTester.cs generated micro-room tests
+  Skills/SkillValidator.cs ✓ static checks, closed-loop / macro form
+  Skills/ScenarioTester.cs ✓ micro-room tests, SkillAdmission + feedback
   Skills/Library.cs       registry + persistence
   Llm/Prompts (induce_skill)
   Agent/LlmAgent: induction trigger
@@ -702,8 +764,9 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Interpreter | each statement type, branches follow fresh facts, `until` early stop and max, `fail`, invalid steps, argument functions, nested skills and depth bound, step / tick limits, episode end | unit |
 | Hand-written skills | strategy switch on failure, retreat-and-retry, throw from range, coin, each door tool, ≥ 3 distinct paths for one skill | unit |
 | Skill conditions | RD beats R on 40 tier-1 seeds; skill metrics and trace steps recorded | integration |
-| Validator (planned) | each rejection rule has a failing fixture | unit |
-| ScenarioTester (planned) | known-good skill passes; known-bad skill fails | unit |
+| Validator | each rejection rule has a fixture with the expected message; library valid; macro form | unit |
+| ScenarioTester | accepts v1 / v3, rejects v2 on default seeds; pinned calibration counts over 40 blocks; rooms satisfy pre; deterministic; paired rooms; no side effects | unit, calibration |
+| Admission | invalid skills not tested; feedback lists errors or all 20 rooms | unit |
 
 No test touches the network. The LLM path is exercised with scripted clients
 (fixed replies), the stub provider and a stubbed HTTP handler; these are never
@@ -747,7 +810,9 @@ reported as results.
 | Induced skills are trivial macros anyway | medium | high | Closed-loop is a validator requirement for condition C (§3 property 2); E quantifies the difference |
 | A already solves everything | medium | high | Calibrate D_max in week 5; stochastic entities punish open-loop play |
 | Simple rules (R) already solve everything | medium | high | R is 87.5 % on tier 3 (200 seeds); RD with a closed-loop skill is 95.5 % (p = 0.005), so there is headroom skills can use. Report C vs. R honestly (H4) |
-| LLM-induced skills are worse than hand-written ones | high | high | The first hand-written `calm_guard` was itself no better than R; scenario tests (week 7) must catch weak skills before registration; RD is the reference for what a good skill achieves |
+| LLM-induced skills are worse than hand-written ones | high | high | One of three hand-written `calm_guard` drafts was no better than R. Calibrated scenario tests (§6.4) reject that draft in 36/40 seed blocks; RD is the reference for what a good skill achieves |
+| Scenario tester misjudges skills | medium | high | Measured error rates (§6.4): ~5 % false reject, ~10 % false accept on the calibration drafts. Report accepted skills' full-episode performance, not only their test pass rate |
+| Tester rooms differ from real dungeons | medium | medium | Start distances calibrated on real first sightings; one entity per room. Multi-entity situations are untested — a stated limitation |
 | Environment work overruns | high | high | Guard + Door only until week 10; checkpoint at week 8 |
 | API cost overrun | low | medium | Hard caps, cache, cost estimate in week 5 |
 | Non-reproducible results | medium | high | Record/replay cache; pinned snapshot; seeds in every CSV row |

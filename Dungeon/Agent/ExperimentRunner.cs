@@ -16,7 +16,9 @@ public sealed record ExperimentConfig(
     double Temperature,
     CacheMode CacheMode,
     string CacheDir,
-    LlmBudget Budget);
+    LlmBudget Budget,
+    IReadOnlyList<Skill>? Library = null,
+    string LibrarySource = "handwritten");
 
 public sealed record ExperimentSummary(
     int Episodes,
@@ -40,9 +42,10 @@ public static class ExperimentRunner
 
     public static bool UsesLlm(string condition) => condition is "A" or "D";
 
-    public static ActionSpace InitialSpace(string condition) => condition switch
+    // D and RD use the hand-written library unless another fixed library is given (e.g. a skill draft).
+    public static ActionSpace InitialSpace(string condition, IReadOnlyList<Skill>? library = null) => condition switch
     {
-        "D" or "RD" => StandardActions.Create().WithSkills(HandwrittenSkills.Load()),
+        "D" or "RD" => StandardActions.Create().WithSkills(library ?? HandwrittenSkills.Load()),
         _ => StandardActions.Create()
     };
 
@@ -71,7 +74,7 @@ public static class ExperimentRunner
         foreach (var seed in config.Seeds)
         {
             // Every episode starts from the same action set; nothing carries over in A, R, D, RD.
-            var space = InitialSpace(config.Condition);
+            var space = InitialSpace(config.Condition, config.Library);
             EpisodeResult result;
             IReadOnlyList<StepTrace> trace;
             try
@@ -118,6 +121,7 @@ public static class ExperimentRunner
             cache_mode = config.CacheMode.ToString().ToLowerInvariant(),
             cache_dir = config.CacheDir,
             budget = new { max_calls = config.Budget.MaxCalls, max_tokens = config.Budget.MaxTokens },
+            library = config.Condition is "D" or "RD" ? config.LibrarySource : null,
             finished_utc = DateTime.UtcNow,
             summary
         };

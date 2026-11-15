@@ -7,10 +7,10 @@ using Dungeon.Skills;
 // Usage:
 //   dotnet run --project Dungeon.Cli -- play   [--seed N] [--tier 1|2|3] [--sight R] [--skills handwritten|FILE]
 //   dotnet run --project Dungeon.Cli -- render [--seed N] [--tier 1|2|3]
-//   dotnet run --project Dungeon.Cli -- skills [--file FILE]       (print a skill library)
+//   dotnet run --project Dungeon.Cli -- skills [--file FILE] [--test] [--macro]   (print, validate and test a library)
 //   dotnet run --project Dungeon.Cli -- run    --condition A|R|D|RD [--tier 3] [--seeds 1-20] [--max-decisions 40]
 //                                              [--llm live|record|replay] [--provider openai|stub] [--out DIR]
-//                                              [--max-calls N] [--max-tokens N] [--env FILE]
+//                                              [--max-calls N] [--max-tokens N] [--env FILE] [--skills FILE]
 //   echo "e\ne\nstate" | dotnet run --project Dungeon.Cli -- play --seed 1   (scripted)
 
 var command = args.FirstOrDefault() ?? "help";
@@ -128,8 +128,12 @@ async Task<int> Run()
     Console.WriteLine($"decider {decider.Name}, {(!ExperimentRunner.UsesLlm(condition) ? "no LLM" : $"{settings.Describe()} provider={provider} cache={mode.ToString().ToLowerInvariant()} ({cacheDir})")}");
     Console.WriteLine($"output {outDir}\n");
 
+    var librarySource = Option("--skills") ?? "handwritten";
+    if (librarySource != "handwritten" && condition is not ("D" or "RD"))
+        throw new ArgumentException("--skills only applies to conditions D and RD");
     var summary = await ExperimentRunner.RunAsync(new ExperimentConfig(condition, tier, seeds, maxDecisions, outDir,
-        provider, settings.Model, settings.Temperature, mode, cacheDir, budget), decider, Console.WriteLine);
+        provider, settings.Model, settings.Temperature, mode, cacheDir, budget, LoadSkills(librarySource), librarySource),
+        decider, Console.WriteLine);
 
     Console.WriteLine($"\nsuccess {summary.Successes}/{summary.Episodes} ({summary.SuccessRate:P0}), " +
                       $"mean decisions {summary.MeanDecisions:F1}, LLM calls {summary.LlmCalls} (cached {summary.CacheHits}), " +
@@ -146,12 +150,27 @@ void PrintSkills()
 {
     var file = Option("--file");
     var skills = LoadSkills(file ?? "handwritten");
+    var test = args.Contains("--test");
+    var form = args.Contains("--macro") ? SkillForm.Macro : SkillForm.ClosedLoop;
+    // Each skill is checked against the primitives, helpers and the skills listed before it.
+    var space = StandardActions.Create();
+    var admitted = new List<Skill>();
     foreach (var s in skills)
     {
         Console.WriteLine($"{s.Name}({string.Join(", ", s.Params.Select(p => $"{p.Name}: {SkillJson.ParamTypes.First(kv => kv.Value == p.Type).Key}"))})");
-        Console.WriteLine($"  {SkillActions.Describe(s)}\n");
+        Console.WriteLine($"  {SkillActions.Describe(s)}");
+        if (test)
+        {
+            var r = SkillAdmission.Check(s, space, admitted, new ValidationOptions(form));
+            Console.WriteLine("  " + r.Feedback().Replace("\n", "\n  "));
+            if (r.Accepted)
+                admitted.Add(s);
+        }
+        space.Register(SkillActions.ToAction(s));
+        Console.WriteLine();
     }
-    Console.WriteLine(file is null ? HandwrittenSkills.Json() : File.ReadAllText(file));
+    if (!test)
+        Console.WriteLine(file is null ? HandwrittenSkills.Json() : File.ReadAllText(file));
 }
 
 // "handwritten" = embedded library for condition D; otherwise a JSON file with a list of skills.

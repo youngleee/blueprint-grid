@@ -1,0 +1,174 @@
+[
+  {
+    "name": "calm_guard",
+    "description": "v1 draft: coin, food or talk; retreat when still alert",
+    "params": [
+      {
+        "name": "g",
+        "type": "guard"
+      }
+    ],
+    "pre": [
+      "known(g)",
+      "state(g) != hostile"
+    ],
+    "effect": [
+      "state(g) in [calm, bribed, distracted]"
+    ],
+    "body": [
+      {
+        "until": "state(g) in [calm, bribed, distracted]",
+        "max": 4,
+        "do": [
+          {
+            "if": "dist(g) > 2",
+            "then": [
+              {
+                "call": "go_to",
+                "args": [
+                  "g",
+                  1
+                ]
+              }
+            ]
+          },
+          {
+            "if": "has(coin) and dist(g) <= 1",
+            "then": [
+              {
+                "call": "give",
+                "args": [
+                  "held(coin)",
+                  "g"
+                ]
+              }
+            ],
+            "else": [
+              {
+                "if": "has(food) and dist(g) <= 1",
+                "then": [
+                  {
+                    "call": "give",
+                    "args": [
+                      "held(food)",
+                      "g"
+                    ]
+                  }
+                ],
+                "else": [
+                  {
+                    "if": "dist(g) <= 2",
+                    "then": [
+                      {
+                        "call": "talk",
+                        "args": [
+                          "g"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "if": "state(g) == alert",
+            "then": [
+              {
+                "call": "retreat",
+                "args": [
+                  "g",
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "open_door",
+    "description": "Open a closed door you have the means to open: its key, else a lockpick, else push a jammed door; retry a few times",
+    "params": [
+      {
+        "name": "d",
+        "type": "door"
+      }
+    ],
+    "pre": [
+      "known(d)",
+      "state(d) == closed",
+      "type(d) == jammed or has_key(d) or has(lockpick)"
+    ],
+    "effect": [
+      "state(d) == open"
+    ],
+    "body": [
+      {
+        "until": "adjacent(d)",
+        "max": 3,
+        "do": [
+          {
+            "call": "go_to",
+            "args": [
+              "d",
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "until": "state(d) == open",
+        "max": 6,
+        "do": [
+          {
+            "if": "has_key(d)",
+            "then": [
+              {
+                "call": "use",
+                "args": [
+                  "key_for(d)",
+                  "d"
+                ]
+              }
+            ],
+            "else": [
+              {
+                "if": "type(d) == locked and has(lockpick)",
+                "then": [
+                  {
+                    "call": "use",
+                    "args": [
+                      "held(lockpick)",
+                      "d"
+                    ]
+                  }
+                ],
+                "else": [
+                  {
+                    "if": "type(d) == jammed",
+                    "then": [
+                      {
+                        "call": "use",
+                        "args": [
+                          "none",
+                          "d"
+                        ]
+                      }
+                    ],
+                    "else": [
+                      {
+                        "fail": "locked and no key or lockpick"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

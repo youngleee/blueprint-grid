@@ -320,13 +320,16 @@ public class HandwrittenSkillTests
     }
 
     [Fact]
-    public void Open_door_fails_cleanly_on_locked_door_without_tools()
+    public void Open_door_is_not_offered_for_a_locked_door_without_tools()
     {
+        // Precondition requires the means to open it; the scenario tester showed that without
+        // this the skill was "applicable" in rooms where it could never succeed.
         var door = new Door("door_1", new Cell(5, 1), DoorKind.Locked, 0, 0);
         var ctx = new AgentContext(TestMaps.World(TestMaps.Corridor, doors: [door], sightRadius: 5));
         var r = Space.Execute(ctx, "open_door", ["door_1"]);
-        Assert.Equal("failed", r.Status);
-        Assert.Equal("locked and no key or lockpick", r.Message);
+        Assert.Equal("invalid", r.Status);
+        Assert.Contains("precondition not met: type(d) == jammed or has_key(d) or has(lockpick)", r.Message);
+        Assert.Equal(0, ctx.Tick);
     }
 
     [Fact]

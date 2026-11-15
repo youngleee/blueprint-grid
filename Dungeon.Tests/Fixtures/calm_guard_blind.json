@@ -1,0 +1,47 @@
+[
+  {
+    "name": "calm_guard",
+    "description": "blind: walk up and give food, twice",
+    "params": [
+      {
+        "name": "g",
+        "type": "guard"
+      }
+    ],
+    "pre": [
+      "known(g)",
+      "has(food)"
+    ],
+    "effect": [
+      "state(g) in [calm, bribed, distracted]"
+    ],
+    "body": [
+      {
+        "call": "go_to",
+        "args": [
+          "g",
+          1
+        ]
+      },
+      {
+        "if": "true",
+        "then": [
+          {
+            "call": "give",
+            "args": [
+              "held(food)",
+              "g"
+            ]
+          }
+        ]
+      },
+      {
+        "call": "give",
+        "args": [
+          "held(food)",
+          "g"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,216 @@
+[
+  {
+    "name": "calm_guard",
+    "description": "v2 draft: coin once, food once (adjacent), then talk",
+    "params": [
+      {
+        "name": "g",
+        "type": "guard"
+      }
+    ],
+    "pre": [
+      "known(g)",
+      "state(g) != hostile"
+    ],
+    "effect": [
+      "state(g) in [calm, bribed, distracted]"
+    ],
+    "body": [
+      {
+        "if": "has(coin) and not state(g) in [calm, bribed, distracted]",
+        "then": [
+          {
+            "until": "dist(g) <= 1",
+            "max": 3,
+            "do": [
+              {
+                "call": "go_to",
+                "args": [
+                  "g",
+                  1
+                ]
+              }
+            ]
+          },
+          {
+            "call": "give",
+            "args": [
+              "held(coin)",
+              "g"
+            ]
+          },
+          {
+            "if": "state(g) == alert",
+            "then": [
+              {
+                "call": "retreat",
+                "args": [
+                  "g",
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "if": "has(food) and not state(g) in [calm, bribed, distracted]",
+        "then": [
+          {
+            "until": "dist(g) <= 1",
+            "max": 3,
+            "do": [
+              {
+                "call": "go_to",
+                "args": [
+                  "g",
+                  1
+                ]
+              }
+            ]
+          },
+          {
+            "call": "give",
+            "args": [
+              "held(food)",
+              "g"
+            ]
+          },
+          {
+            "if": "state(g) == alert",
+            "then": [
+              {
+                "call": "retreat",
+                "args": [
+                  "g",
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "until": "state(g) in [calm, bribed, distracted]",
+        "max": 3,
+        "do": [
+          {
+            "until": "dist(g) <= 2",
+            "max": 3,
+            "do": [
+              {
+                "call": "go_to",
+                "args": [
+                  "g",
+                  2
+                ]
+              }
+            ]
+          },
+          {
+            "call": "talk",
+            "args": [
+              "g"
+            ]
+          },
+          {
+            "if": "state(g) == alert",
+            "then": [
+              {
+                "call": "retreat",
+                "args": [
+                  "g",
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "open_door",
+    "description": "Open a closed door you have the means to open: its key, else a lockpick, else push a jammed door; retry a few times",
+    "params": [
+      {
+        "name": "d",
+        "type": "door"
+      }
+    ],
+    "pre": [
+      "known(d)",
+      "state(d) == closed",
+      "type(d) == jammed or has_key(d) or has(lockpick)"
+    ],
+    "effect": [
+      "state(d) == open"
+    ],
+    "body": [
+      {
+        "until": "adjacent(d)",
+        "max": 3,
+        "do": [
+          {
+            "call": "go_to",
+            "args": [
+              "d",
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "until": "state(d) == open",
+        "max": 6,
+        "do": [
+          {
+            "if": "has_key(d)",
+            "then": [
+              {
+                "call": "use",
+                "args": [
+                  "key_for(d)",
+                  "d"
+                ]
+              }
+            ],
+            "else": [
+              {
+                "if": "type(d) == locked and has(lockpick)",
+                "then": [
+                  {
+                    "call": "use",
+                    "args": [
+                      "held(lockpick)",
+                      "d"
+                    ]
+                  }
+                ],
+                "else": [
+                  {
+                    "if": "type(d) == jammed",
+                    "then": [
+                      {
+                        "call": "use",
+                        "args": [
+                          "none",
+                          "d"
+                        ]
+                      }
+                    ],
+                    "else": [
+                      {
+                        "fail": "locked and no key or lockpick"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
