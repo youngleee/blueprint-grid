@@ -29,9 +29,13 @@ before changing behaviour.
     `MeteredClient` (call/token caps), `StubLlmClient` (offline), `LlmSettings`.
   - `Skills/`: `Skill` model, `SkillJson` (parse/serialize), `SkillInterpreter`
     (closed-loop execution + contracts), `SkillActions` (skill → action),
-    `HandwrittenSkills` + `Library/handwritten.json` (embedded, conditions D/RD).
+    `HandwrittenSkills` + `Library/handwritten.json` (embedded, conditions D/RD),
+    `SkillValidator` (static checks, closed-loop / macro form), `ScenarioTester`
+    (micro-room tests) and `SkillAdmission` (both + feedback text).
 - `Dungeon.Cli/`: `play`, `render`, `run`, `skills`.
 - `Dungeon.Tests/`: xUnit. `LlmFakes.cs` has the scripted client and HTTP stub.
+  `Fixtures/calm_guard_v1|v2|v3|blind.json` are skill drafts with known
+  full-episode quality; they calibrate the scenario tester (PLAN §6.4).
 - `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it;
   it will be replaced by a MARS host for `DungeonWorld`.
 - `Visualization/`: PyGame visualizer for MARS runs.
@@ -74,6 +78,11 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
   through `ActionSpace.Invoke`, so a skill can only do what the agent can do.
 - **Changing `handwritten.json` changes results.** It is the D/RD reference;
   rerun R vs RD and update the table in `docs/PLAN.md` §9.1 in the same commit.
+- **Admission thresholds are calibrated, not chosen.** `ScenarioTestOptions`
+  defaults (20 rooms, ≥ 16 passes, 0 lost episodes) come from the fixture
+  calibration in PLAN §6.4; `ScenarioTesterTests` pins the counts. Changing
+  the tester, the room generator or the defaults means re-running that
+  calibration and updating §6.4.
 - **No network in tests.** Use `ScriptedLlmClient`, `StubHandler` or
   `StubLlmClient`. Never log or persist the API key.
 - **Clone is deep.** Every new piece of mutable world state must be copied in

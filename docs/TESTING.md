@@ -29,6 +29,9 @@ dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3 [--sight 3] [--skills
 # Show a skill library: signatures, what the LLM is told, and the JSON
 dotnet run --project Dungeon.Cli -- skills [--file FILE]
 
+# Validate and scenario-test every skill in a library (20 generated rooms each)
+dotnet run --project Dungeon.Cli -- skills --test [--file FILE] [--macro]
+
 # Scripted run: pipe commands, output is reproducible for the same seed
 printf 'state\nw\nw\nuse none door_1\n' | dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3
 ```
@@ -87,9 +90,12 @@ Use `render` first to find the entity ids and positions for a seed.
 | 22 | Unseen ids are rejected | `talk guard_1` before seeing the guard | `invalid: unknown guard 'guard_1' (known: none)` — same as for a made-up id |
 | 23 | Retreat resets a guard | get a guard `alert`, `retreat guard_1 3`, `debug` | guard `idle`, patience full |
 | 24 | Skills are actions | `play --skills handwritten`, `actions` | lists `calm_guard(g)` and `open_door(d)` |
-| 25 | Skill precondition | `play --seed 1 --tier 3 --skills handwritten`: `open_door door_1` at the start; later `open_door` on a door you have opened | first: `invalid: unknown door 'door_1'` (not seen yet); second: `invalid: precondition not met: state(d) == closed` |
+| 25 | Skill precondition | `play --seed 1 --tier 3 --skills handwritten`: `open_door door_1` at the start; later `open_door` on a door you have opened; on a locked door without key or lockpick | `invalid: unknown door 'door_1'` (not seen yet); `precondition not met: state(d) == closed`; `precondition not met: type(d) == jammed or has_key(d) or has(lockpick)` |
 | 26 | calm_guard adapts | `play --tier 1 --skills handwritten` for seeds 3, 5, 8: `explore` until the guard is spotted, `calm_guard guard_1` | `success`; the step list differs per seed (e.g. one `talk`, or `go_to` then `talk`) |
-| 27 | open_door picks the tool | `play --seed 1 --tier 2 --skills handwritten`: `open_door door_1` (jammed), pick up `key_1`, `open_door door_2` (locked) | first shows `use(none,door_1)` pushes, second `use(key_1,door_2)` |
+| 27 | open_door picks the tool | `play --seed 1 --tier 2 --skills handwritten`: `goto key_1`, `pick_up`, `explore` until `door_1` (jammed) is spotted, `open_door door_1`, `explore` until `door_2` (locked), `open_door door_2` | steps show `use(none,door_1)` and `use(key_1,door_2)` |
+| 28 | Library passes admission | `skills --test` | both skills `accepted`, ≥ 16/20 rooms, no lost episode |
+| 29 | Weak draft is rejected | `skills --test --file Dungeon.Tests/Fixtures/calm_guard_v2.json` | `calm_guard: rejected … episode lost in 2`; 20 room lines with setup → outcome |
+| 30 | Macro is rejected | `skills --test --file Dungeon.Tests/Fixtures/calm_guard_blind.json` | validator: `a fixed sequence of calls is a macro, not a skill` |
 
 Probabilistic cases (7, 10–12) depend on the seed: the same seed and the same
 command sequence always give the same outcome; a different seed may not.
@@ -111,6 +117,7 @@ dotnet run --project Dungeon.Cli -- run --condition A|R [options]
 | `--max-calls`, `--max-tokens` | `2000`, `3000000` | hard caps on real API usage per run |
 | `--out` | `runs/<time>_<cond>_tier<N>` | output directory |
 | `--env` | `./.env` (or parent dirs) | settings file |
+| `--skills` | `handwritten` | for D and RD only: a skill library JSON file instead of the built-in one |
 
 Output directory:
 
@@ -125,6 +132,7 @@ Output directory:
 |---|---|---|---|
 | R1 | Rule baseline | `run --condition R --tier 3 --seeds 1-200` | 175/200; failures are `caught by guard_1` or `decision_budget` |
 | R1b | Skills help the rules | `run --condition RD --tier 3 --seeds 1-200` | 191/200, fewer decisions than R; `skill_invocations` > 0 in `metrics.csv` |
+| R1d | Compare skill drafts | `run --condition RD --tier 3 --seeds 1-200 --skills Dungeon.Tests/Fixtures/calm_guard_v1.json` (then v2) | v1 195/200, v2 171/200 (built-in v3: 191/200) |
 | R1c | Skill steps in traces | open any `traces/seed_N.jsonl` from R1b | skill lines have `"kind":"skill"` and a `skill_steps` list |
 | R2 | Offline LLM pipeline | `run --condition A --provider stub --tier 3 --seeds 1-5` | runs, writes outputs; low success is expected (the stub only explores) |
 | R3 | Replay is identical | R2, then the same with `--llm replay` | same `metrics.csv` except `cache_hits`; no network |

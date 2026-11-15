@@ -9,8 +9,10 @@ definitions and current status are in [`docs/PLAN.md`](docs/PLAN.md).
 record/replay cache, budget), the skill language and interpreter, and the
 conditions A, R, D and RD are implemented and tested offline. First result:
 a hand-written closed-loop skill raises the rule baseline from 87.5 % to
-95.5 % on tier 3 (200 paired seeds, p = 0.005). Next: skill validation and
-LLM skill induction. See the status table in `docs/PLAN.md`.
+95.5 % on tier 3 (200 paired seeds, p = 0.005). Skills are validated and
+tested in generated rooms before use, with thresholds calibrated on drafts of
+known quality. Next: LLM skill induction. See the status table in
+`docs/PLAN.md`.
 
 ## Project structure
 
