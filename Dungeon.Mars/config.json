@@ -1,0 +1,16 @@
+{
+  "globals": {
+    "startTime": "2022-03-01T05:00",
+    "endTime": "2022-03-01T05:10",
+    "deltaTUnit": "seconds",
+    "deltaT": 1,
+    "output": "none",
+    "pythonVisualization": true
+  },
+  "layers": [
+    { "name": "DungeonLayer", "file": "Resources/blank_40x40.csv", "pythonVisualization": true }
+  ],
+  "agents": [
+    { "name": "ReplayAgent", "count": 1 }
+  ]
+}

@@ -27,8 +27,9 @@ the live runs — see [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md).
 | `docs/TESTING.md` | How to test by hand; every CLI option and output file |
 | `docs/EXPERIMENTS.md` | **Start here on the experiment machine:** setup, dry run, live protocol, cost, reading results |
 | `scripts/` | `run_protocol.sh` (all experiment phases), `analyze.py` (results tables) |
-| `GridBlueprint/` | **Previous prototype** (MARS detour agent), kept until the dungeon gets its MARS host |
-| `Visualization/` | PyGame visualizer for MARS runs (currently for the old prototype) |
+| `Dungeon.Mars/` | MARS host that replays a recorded episode (demo) |
+| `Visualization/` | PyGame visualizer for MARS runs: `python main.py dungeon` for the replay |
+| `GridBlueprint/` | **Previous prototype** (MARS detour agent), kept for reference |
 
 ## Requirements
 
@@ -56,6 +57,7 @@ dotnet run --project Dungeon.Cli -- run --condition C --tier 3 --seeds 1-20 --pr
 ```
 
 Details, manual test cases and run outputs: [`docs/TESTING.md`](docs/TESTING.md).
+Watch a recorded episode in MARS + PyGame: [`Visualization/README.md`](Visualization/README.md).
 
 ## Secrets
 

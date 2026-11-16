@@ -38,9 +38,12 @@ before changing behaviour.
 - `Dungeon.Tests/`: xUnit. `LlmFakes.cs` has the scripted client and HTTP stub.
   `Fixtures/calm_guard_v1|v2|v3|blind.json` are skill drafts with known
   full-episode quality; they calibrate the scenario tester (PLAN §6.4).
-- `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it;
-  it will be replaced by a MARS host for `DungeonWorld`.
-- `Visualization/`: PyGame visualizer for MARS runs.
+- `Dungeon.Mars/`: MARS host that **replays** a recorded episode
+  (`EpisodeReplay`) into a `RasterLayer` for the PyGame visualizer. It never
+  drives an experiment.
+- `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it.
+- `Visualization/`: PyGame visualizer for MARS runs (`main.py dungeon` for
+  the replay, plain `main.py` for the old prototype).
 - `scripts/`: `run_protocol.sh` (experiment phases; skips finished runs),
   `analyze.py` + `test_analyze.py` (report tables and statistics).
 - `docs/EXPERIMENTS.md`: how to run the study on another machine.

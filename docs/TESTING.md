@@ -159,4 +159,5 @@ Output directory:
 | R12 | Macro ablation | `run --condition E --provider stub --seeds 1-20`, then with `--admission valid` | `tested`: 0 macros admitted (they fail the room tests); `valid`: some admitted |
 | R14 | Traces are complete | `replay --run runs/stubC --check` | every seed `matches trace`; edit an action in a trace and it reports `MISMATCH` |
 | R15 | Watch a learned skill | `replay --run runs/stubC --seed 2 --delay 300` | map per decision; `[learned skill …]` at the decision where it was admitted |
+| R16 | MARS replay | `python Visualization/main.py dungeon`, then `dotnet run --project Dungeon.Mars -- --run runs/stubC --seed 2` | window shows the map filling in decision by decision; terminal prints each decision and `[learned …]` |
 | R13 | First live induction | `.env` with key, `run --condition C --tier 1 --seeds 1-5 --max-calls 300` | `induction.jsonl`: real model replies, feedback rounds; check whether any skill is accepted and what it looks like (`skills --test --file <out>/library.json`) |

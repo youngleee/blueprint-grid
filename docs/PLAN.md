@@ -13,14 +13,13 @@ Update this table in the same commit as the work it describes.
 | 3 | Guard, door, items, all primitives, solvable scenario tiers | done |
 | — | CLI `play` / `render` + `docs/TESTING.md` (manual testing aid) | done |
 | 4 | Facts, condition evaluator, `go_to` / `explore` | done |
-| 4b | MARS host for `DungeonWorld`, PyGame update | deferred to week 13 (demo only; experiment does not need MARS) |
+| 4b | MARS host for `DungeonWorld`, PyGame update | done (week 9): `Dungeon.Mars` replays a recorded episode in MARS; `Visualization/main.py dungeon` |
 | 5 | Action space, LLM client + cache + budget, `choose_action`, conditions A and R, experiment runner | done (offline); live calibration needs API key |
 | 6 | Skill DSL, interpreter, contracts, skills in `A_t`, hand-written library, conditions D and RD | done; first evidence in §9.1 |
 | 7 | Skill validator, scenario tester (calibrated), admission feedback, `skills --test`, `run --skills` | done |
 | 8 | `induce_skill` prompt, induction loop with feedback, conditions B / C / E, frozen held-out runs, usable-skills hint | done (offline with stub); live runs need API key |
 | 9 | Experiment protocol script, analysis script (tables, McNemar, curves), `docs/EXPERIMENTS.md` | done; full protocol dry-run with the stub |
 | 10–12 | Live runs: calibrate, train, held-out test, variance (on the experiment machine) | next — needs API key |
-| 13 | MARS host + PyGame demo of a learned skill | — |
 | 13–15 | Report from `results.md`, qualitative traces | — |
 
 ---
@@ -104,8 +103,12 @@ decision horizon — standard in hierarchical RL).
 ### 5.1 Architecture decision: pure C# world core, MARS as host
 
 The world logic lives in a **plain, deterministic, cloneable C# model**
-(`DungeonWorld`). MARS hosts it for tick scheduling, CSV output and
-visualization; the experiment runner drives the same core headlessly.
+(`DungeonWorld`). The experiment runner drives it headlessly. MARS hosts a
+**replay** of a recorded episode for the demo (`Dungeon.Mars`): a
+`RasterLayer` is redrawn from the replayed world each tick and a MARS agent
+follows the dungeon agent, so the existing PyGame websocket visualizer shows
+it unchanged. Replay instead of live control keeps the demo free of LLM calls
+and identical to what the experiment recorded.
 
 *Why:* skill verification (§6.4) must run many short simulations in generated
 micro-scenarios. That requires cheap construction and exact reproducibility,
@@ -798,9 +801,10 @@ Dungeon/                  class library, no MARS dependency
   Agent/EpisodeReplay.cs  ✓ re-execute an episode from its trace (verification, demo)
   Llm/JsonText.cs         ✓ code-fence stripping
   Skills/Library.cs       registry + persistence
-Dungeon.Cli/              ✓ play / render / run / skills
+Dungeon.Cli/              ✓ play / render / run / skills / replay
+Dungeon.Mars/             ✓ MARS host: replays a recorded episode for the PyGame visualizer
 Dungeon.Tests/            ✓ xUnit
-Visualization/            PyGame (to be extended: fog of war, entities, skill log)
+Visualization/            ✓ PyGame (`python main.py dungeon` for the dungeon replay)
 scripts/run_protocol.sh   ✓ full experiment protocol (phases check … analyze)
 scripts/analyze.py        ✓ results.md: calibration, training, held-out, McNemar, skills, variance, tokens
 scripts/test_analyze.py   ✓ checks for the statistics
@@ -893,7 +897,7 @@ reported as results.
 | API cost overrun | low | medium | Hard caps, cache, cost estimate in week 5 |
 | Non-reproducible results | medium | high | Record/replay cache; pinned snapshot; seeds in every CSV row |
 | Information leakage via verification | medium | medium | Verify in generated micro-rooms, never in a clone of the real episode |
-| MARS integration friction | medium | low | World core independent of MARS; MARS only hosts the demo |
+| MARS integration friction | medium | low | World core independent of MARS; MARS only hosts the replay demo (built in week 9, works) |
 
 ## 15. Deliverables
 

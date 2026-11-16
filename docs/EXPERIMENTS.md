@@ -112,6 +112,9 @@ Watch an episode step by step, with skills appearing when they were learned:
 dotnet run --project Dungeon.Cli -- replay --run runs/protocol/test_C_frozen --seed 1001 --delay 300
 ```
 
+For the presentation, the same replay runs inside MARS with the PyGame window
+(`Visualization/README.md` → *Dungeon replay*).
+
 These are the qualitative trace of PLAN §9.6.
 
 ## 6. What to bring back

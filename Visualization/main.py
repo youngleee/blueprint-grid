@@ -1,6 +1,7 @@
 import _thread as thread
 import csv
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -9,6 +10,10 @@ from pygame import RESIZABLE, DOUBLEBUF, HWSURFACE
 from websocket import create_connection, WebSocketConnectionClosedException
 
 import lock
+
+# Which model is being visualized: "detour" (old GridBlueprint prototype, default) or "dungeon"
+# (Dungeon.Mars replay host). Usage: python main.py [dungeon]
+MODE = sys.argv[1] if len(sys.argv) > 1 else "detour"
 
 GRAY = (100, 100, 100)
 NAVYBLUE = (60, 60, 100)
@@ -42,7 +47,7 @@ VECTOR_COLORS = [RED, WHITE, BLUE, ORANGE, YELLOW]
 class Visualization:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("MARS-Mini-VIS")
+        pygame.display.set_caption("MARS-Mini-VIS" if MODE == "detour" else "Dungeon replay")
 
         try:
             self.programIcon = pygame.image.load('icon.png')
@@ -52,7 +57,7 @@ class Visualization:
 
         self.clock = pygame.time.Clock()
         self.WINDOW_SIZE = [900, 920]
-        self.WORLD_SIZE = self.load_world_size()
+        self.WORLD_SIZE = self.load_world_size() if MODE == "detour" else (0, 0, 39, 39)
         self.BORDER_WIDTH_PIXEL = -20
         self.font = pygame.font.Font('freesansbold.ttf', 12)
         self.text = self.font.render('Tick: 0', True, YELLOW)
@@ -83,7 +88,8 @@ class Visualization:
         self.borderColor = (255, 255, 255)
         self.barColor = (0, 128, 0)
         self.has_welcome_been_printed = False
-        self.goals = self.load_goals()
+        # Goal markers belong to the detour prototype; the dungeon host draws its exit in the raster.
+        self.goals = self.load_goals() if MODE == "detour" else []
 
         self.set_window_relations(self.WINDOW_SIZE[0], self.WINDOW_SIZE[1])
 
