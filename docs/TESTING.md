@@ -15,7 +15,8 @@ dotnet test Dungeon.Tests                                         # all (~35 s, 
 dotnet test Dungeon.Tests --filter "FullyQualifiedName~GuardTests"  # one area
 ```
 
-No automated test uses the network or an API key.
+No automated test uses the network or an API key. The analysis script has its
+own checks: `python3 scripts/test_analyze.py`.
 
 ## Manual tools
 

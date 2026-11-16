@@ -41,6 +41,9 @@ before changing behaviour.
 - `GridBlueprint/`: previous MARS prototype (detour agent). Do not extend it;
   it will be replaced by a MARS host for `DungeonWorld`.
 - `Visualization/`: PyGame visualizer for MARS runs.
+- `scripts/`: `run_protocol.sh` (experiment phases; skips finished runs),
+  `analyze.py` + `test_analyze.py` (report tables and statistics).
+- `docs/EXPERIMENTS.md`: how to run the study on another machine.
 
 ## Build, test, run
 

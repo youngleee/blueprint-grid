@@ -12,8 +12,9 @@ E) are implemented and tested offline. First result:
 a hand-written closed-loop skill raises the rule baseline from 87.5 % to
 95.5 % on tier 3 (200 paired seeds, p = 0.005). Skills are validated and
 tested in generated rooms before use, with thresholds calibrated on drafts of
-known quality. Next: the experiment protocol and analysis scripts; then live runs with a real
-model. See the status table in `docs/PLAN.md`.
+known quality. The full experiment protocol and its analysis are scripted
+(`scripts/run_protocol.sh`, `scripts/analyze.py`) and dry-run offline. Next:
+the live runs — see [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md).
 
 ## Project structure
 
@@ -23,7 +24,9 @@ model. See the status table in `docs/PLAN.md`.
 | `Dungeon.Cli/` | `play`, `render`, `run` and `skills` commands |
 | `Dungeon.Tests/` | xUnit tests, incl. 1 000-seed property tests; no test uses the network |
 | `docs/PLAN.md` | Research plan, specification, timeline, implementation status |
-| `docs/TESTING.md` | How to test by hand and how to run experiments |
+| `docs/TESTING.md` | How to test by hand; every CLI option and output file |
+| `docs/EXPERIMENTS.md` | **Start here on the experiment machine:** setup, dry run, live protocol, cost, reading results |
+| `scripts/` | `run_protocol.sh` (all experiment phases), `analyze.py` (results tables) |
 | `GridBlueprint/` | **Previous prototype** (MARS detour agent), kept until the dungeon gets its MARS host |
 | `Visualization/` | PyGame visualizer for MARS runs (currently for the old prototype) |
 

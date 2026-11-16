@@ -18,9 +18,10 @@ Update this table in the same commit as the work it describes.
 | 6 | Skill DSL, interpreter, contracts, skills in `A_t`, hand-written library, conditions D and RD | done; first evidence in §9.1 |
 | 7 | Skill validator, scenario tester (calibrated), admission feedback, `skills --test`, `run --skills` | done |
 | 8 | `induce_skill` prompt, induction loop with feedback, conditions B / C / E, frozen held-out runs, usable-skills hint | done (offline with stub); live runs need API key |
-| 9 | Experiment protocol script, analysis script (tables, McNemar, curves) | next |
-| 9–11 | Persistent library, held-out evaluation, ablations E / B | — |
-| 12–15 | Statistics, plots, report | — |
+| 9 | Experiment protocol script, analysis script (tables, McNemar, curves), `docs/EXPERIMENTS.md` | done; full protocol dry-run with the stub |
+| 10–12 | Live runs: calibrate, train, held-out test, variance (on the experiment machine) | next — needs API key |
+| 13 | MARS host + PyGame demo of a learned skill | — |
+| 13–15 | Report from `results.md`, qualitative traces | — |
 
 ---
 
@@ -716,6 +717,11 @@ Planned columns, added with skills:
 
 ### 9.5 Statistics
 
+Implemented in `scripts/analyze.py` (standard-library Python): Wilson 95 %
+intervals, exact two-sided McNemar on paired seeds, D_MAX from the
+calibration curve. Checked by `scripts/test_analyze.py` (known Wilson values;
+McNemar 7/23 = 0.0052 as in §9.1).
+
 - Held-out success rate per condition with Wilson 95 % CI.
 - Paired comparison per seed (C vs. A, C vs. E): McNemar test.
 - Live variance: repeat condition C held-out 3× in `live` mode; report spread.
@@ -789,7 +795,10 @@ Dungeon/                  class library, no MARS dependency
 Dungeon.Cli/              ✓ play / render / run / skills
 Dungeon.Tests/            ✓ xUnit
 Visualization/            PyGame (to be extended: fog of war, entities, skill log)
-docs/PLAN.md, docs/TESTING.md ✓
+scripts/run_protocol.sh   ✓ full experiment protocol (phases check … analyze)
+scripts/analyze.py        ✓ results.md: calibration, training, held-out, McNemar, skills, variance, tokens
+scripts/test_analyze.py   ✓ checks for the statistics
+docs/PLAN.md, docs/TESTING.md, docs/EXPERIMENTS.md ✓
 ```
 
 **Reused from the old prototype:** MARS host setup, `ILlmClient` and the OpenAI
