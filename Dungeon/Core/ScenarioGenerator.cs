@@ -27,11 +27,30 @@ public sealed record ScenarioOptions(
 // in the region reachable before each obstacle, so every scenario is solvable.
 public static class ScenarioGenerator
 {
+    public const int MaxLayoutAttempts = 20;
+
+    // About 0.04 % of tier-3 layouts have too few chokepoints for three obstacles. Instead of failing,
+    // such a seed gets an alternative layout (Generator attempt 1, 2, …). Seeds that worked before keep
+    // exactly the same scenario, because attempt 0 is tried first and uses the original stream.
     public static Scenario Generate(int seed, ScenarioOptions? options = null, GeneratorOptions? layout = null)
     {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return GenerateOnce(seed, options, layout, attempt);
+            }
+            catch (InvalidOperationException) when (attempt + 1 < MaxLayoutAttempts)
+            {
+            }
+        }
+    }
+
+    private static Scenario GenerateOnce(int seed, ScenarioOptions? options, GeneratorOptions? layout, int attempt)
+    {
         var o = options ?? new ScenarioOptions();
-        var map = Generator.Generate(seed, layout);
-        var rng = Rng.ForStream(seed, "entity");
+        var map = Generator.Generate(seed, layout, attempt);
+        var rng = Rng.ForStream(seed, attempt == 0 ? "entity" : $"entity#{attempt}");
 
         var obstacleCount = o.Guards + o.LockedDoors + o.JammedDoors;
         var cuts = ChokepointsInOrder(map);

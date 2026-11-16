@@ -98,6 +98,7 @@ public sealed class EpisodeRunner
 
         for (var d = 1; ; d++)
         {
+            ct.ThrowIfCancellationRequested();
             if (ctx.World.Status == EpisodeStatus.Succeeded) { endReason = "exit"; break; }
             if (ctx.World.Status == EpisodeStatus.Failed) { endReason = ctx.World.FailureReason ?? "failed"; break; }
             if (d > config.MaxDecisions) { endReason = "decision_budget"; break; }

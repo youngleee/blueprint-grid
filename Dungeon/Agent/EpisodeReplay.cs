@@ -26,7 +26,7 @@ public static class EpisodeReplay
         {
             null or "none" => new List<Skill>(),
             "handwritten" => HandwrittenSkills.Load().ToList(),
-            _ => SkillJson.ParseLibrary(File.ReadAllText(source))
+            _ => SkillJson.LoadLibrary(File.ReadAllText(source), StandardActions.Create())
         };
         // C / E: skills learned in earlier episodes of this run are part of this episode's start.
         if (condition is "C" or "E")

@@ -27,6 +27,7 @@
 # Every run writes its own directory under $OUT. Re-running a phase reuses the LLM cache
 # (record mode): already answered prompts cost nothing, so an interrupted protocol can be resumed.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 PROVIDER="${PROVIDER:-openai}"
 OUT="${OUT:-runs/protocol}"
@@ -63,8 +64,30 @@ run() {
     echo "skip $name (finished; delete $dir to rerun)"
     return 0
   fi
+  # An earlier attempt (aborted, interrupted, crashed) is kept for inspection, not overwritten.
+  if [[ -e "$dir" ]]; then
+    local stamp; stamp="$(date +%Y%m%d-%H%M%S)"
+    mv "$dir" "$dir.failed-$stamp"
+    echo "kept earlier attempt as $(basename "$dir").failed-$stamp"
+  fi
+  # Every input a later phase needs must exist; fail with a clear message instead of a stack trace.
+  local prev=""
+  for a in "$@"; do
+    if [[ "$prev" == "--skills" && "$a" != "none" && "$a" != "handwritten" && ! -f "$a" ]]; then
+      echo "ERROR: $name needs $a, which is missing (did the phase that writes it finish?)" >&2
+      return 1
+    fi
+    prev="$a"
+  done
   echo "run  $name: $*"
-  cli run "$@" --provider "$PROVIDER" --max-calls "$MAX_CALLS" --max-tokens "$MAX_TOKENS" --out "$dir" | tail -3
+  mkdir -p "$OUT/logs"
+  local log="$OUT/logs/$name.log" status=0
+  cli run "$@" --provider "$PROVIDER" --max-calls "$MAX_CALLS" --max-tokens "$MAX_TOKENS" --out "$dir" > "$log" 2>&1 || status=$?
+  tail -3 "$log"
+  if [[ $status -ne 0 ]]; then
+    echo "ERROR: $name exited with $status (full log: $log). Fix the cause and rerun the phase; finished runs are skipped." >&2
+    return $status
+  fi
 }
 
 phase_check() {
@@ -145,6 +168,7 @@ phase_verify() {
   build
   local bad=0
   for dir in "$OUT"/*/; do
+    [[ "$dir" == *.failed-* ]] && continue
     [[ -f "$dir/run.json" && -d "$dir/traces" ]] || continue
     if ! cli replay --run "$dir" --check > "$dir/replay_check.txt"; then
       echo "MISMATCH in $dir (see replay_check.txt)"; bad=1

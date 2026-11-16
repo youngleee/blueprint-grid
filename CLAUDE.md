@@ -62,7 +62,8 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
 ## Invariants
 
 - **Determinism.** All randomness goes through `Rng` streams derived from the
-  seed (`layout`, `entity`, `outcome`). Never use `System.Random`,
+  seed (`layout`, `entity`, `outcome`; `layout#n` / `entity#n` only for the
+  rare seeds whose first layout is unusable). Never use `System.Random`,
   `Guid.NewGuid()` or time in world logic. Changing stream derivation breaks the
   pinned test in `RngTests` and invalidates recorded runs and LLM caches.
 - **Turn-based.** A valid primitive costs exactly one tick; `invalid` actions
@@ -101,6 +102,14 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
 - **Condition semantics live in `ExperimentRunner`.** A/R/D/RD: fixed action
   set per episode. B: induction, library reset each episode. C/E: induction,
   library persists; E uses `SkillForm.Macro`. `--freeze` disables induction.
+- **Model output is untrusted, always.** Refusals, empty or truncated replies
+  are replies (one decision / one attempt), never exceptions. Only transport
+  failures and non-Responses bodies are `LlmException`. Library files are
+  untrusted too: load them with `SkillJson.LoadLibrary`.
+- **Runs are append-only directories.** Never write into a non-empty `--out`;
+  `run.json` must exist even for interrupted runs (`aborted_reason`).
+- **New robustness bugs get a test in `RobustnessTests.cs`** and a row in PLAN
+  §14.1.
 - **No network in tests.** Use `ScriptedLlmClient`, `StubHandler` or
   `StubLlmClient`. Never log or persist the API key.
 - **Clone is deep.** Every new piece of mutable world state must be copied in

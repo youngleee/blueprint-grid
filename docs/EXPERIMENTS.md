@@ -59,12 +59,18 @@ The rule (PLAN §9.3) is "the largest budget at which A succeeds on ≤ 40 % of 
 (it does with the stub), use the budget where R and RD stop improving instead, and say so in
 the report. Do not tune D_MAX on the held-out seeds.
 
-### Resuming
+### Interrupting and resuming
 
-A run is skipped if its `run.json` exists without `aborted_reason`. Aborted or missing runs are
-redone; the LLM cache (`cache/llm/openai/`, record mode) makes every prompt answered before free,
-so an interrupted protocol costs nothing extra to resume. To redo a finished run, delete its
-directory.
+Press Ctrl-C once (or send SIGTERM, e.g. when a session times out): the current run stops after
+the step in progress and writes `run.json` with `aborted_reason: interrupted` (a second signal
+kills it immediately). The protocol script then stops too. Rerun the same command to
+resume: finished runs are skipped, an aborted one is moved aside to `<name>.failed-<time>` (kept
+for inspection, ignored by analysis and verify) and redone. The LLM cache (`cache/llm/openai/`,
+record mode) makes every prompt answered before free, so resuming costs nothing extra. To redo a
+finished run, delete its directory.
+
+Each run's complete console output is in `runs/protocol/logs/<run>.log`. If a run fails, the
+phase stops with the log path; nothing later runs on missing inputs.
 
 ## 4. Cost estimate
 

@@ -50,6 +50,10 @@ public static partial class SkillValidator
             errors.Add("params: a macro takes no parameters");
         if (skill.Effect.Count == 0)
             errors.Add("effect: must declare at least one condition (what the skill achieves)");
+        else if (!skill.Effect.Any(e => ClaimsProgress(e.Parsed)))
+            errors.Add("effect: must state progress towards the exit — a guard calm, bribed or distracted, a door open, " +
+                       "an item held, or the exit reached (e.g. \"state(g) in [calm, bribed, distracted]\", \"state(d) == open\", " +
+                       "\"has(i)\", \"at_exit()\")");
 
         for (var i = 0; i < skill.Pre.Count; i++)
             CheckCondition(skill.Pre[i].Parsed, $"pre[{i}]", ps, used, macro, errors);
@@ -161,6 +165,21 @@ public static partial class SkillValidator
         RepeatStmt r => r.Count * WorstCaseCalls(r.Body),
         _ => 0
     });
+
+    // Progress facts: what the dungeon actually rewards. Anything an agent gets for free (a guard
+    // becoming alert, being at some distance) is not an achievement and cannot pass as one.
+    private static readonly HashSet<string> ProgressStates = ["calm", "bribed", "distracted", "open"];
+
+    public static bool ClaimsProgress(Condition c) => c switch
+    {
+        And a => a.Parts.Any(ClaimsProgress),
+        Or x => x.Parts.Count > 0 && x.Parts.All(ClaimsProgress),
+        Predicate { Name: "at_exit" } => true,
+        Predicate { Name: "has" or "has_key", Op: null } => true,
+        Predicate { Name: "count", Op: CompareOp.Ge or CompareOp.Gt } => true,
+        Predicate { Name: "state", Op: CompareOp.Eq or CompareOp.In } p => p.Values.All(ProgressStates.Contains),
+        _ => false
+    };
 
     public static bool ReadsFacts(Condition c) => c switch
     {

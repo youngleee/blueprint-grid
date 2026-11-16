@@ -82,9 +82,10 @@ public class LlmClientTests
     }
 
     [Fact]
-    public void Response_without_text_is_an_error()
+    public void Response_without_text_is_a_reply_but_non_json_is_an_error()
     {
-        Assert.Throws<LlmException>(() => OpenAiClient.Parse("{\"output\":[]}"));
+        // An empty output is the model's answer and costs a decision; see RobustnessTests.
+        Assert.Equal("(empty model output)", OpenAiClient.Parse("{\"output\":[]}").Text);
         Assert.Throws<LlmException>(() => OpenAiClient.Parse("<html>"));
     }
 

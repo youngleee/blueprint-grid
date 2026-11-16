@@ -65,6 +65,13 @@ class Report(unittest.TestCase):
             self.assertIn("**D_MAX = 29**", text)
             self.assertNotIn("Stub provider", text)
 
+    def test_failed_attempts_are_ignored(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_run(root, "test_A", "A", [True] * 5)
+            write_run(root, "test_A.failed-20260101-000000", "A", [False] * 5)
+            names = [r["name"] for r in analyze.find_runs([root])]
+            self.assertEqual(names, ["test_A"])
+
 
 if __name__ == "__main__":
     unittest.main()

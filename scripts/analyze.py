@@ -44,6 +44,8 @@ def find_runs(paths):
             runs.append(load_run(p))
             continue
         for entry in sorted(os.listdir(p)):
+            if ".failed-" in entry:  # earlier attempts kept by run_protocol.sh, not results
+                continue
             d = os.path.join(p, entry)
             if os.path.isdir(d) and os.path.exists(os.path.join(d, "metrics.csv")) and os.path.exists(os.path.join(d, "run.json")):
                 runs.append(load_run(d))

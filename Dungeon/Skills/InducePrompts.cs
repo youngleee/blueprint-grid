@@ -71,6 +71,7 @@ public static class InducePrompts
             sb.AppendLine("- Every parameter must be used. At most 40 calls in the worst case.");
         }
         sb.AppendLine("- \"pre\" says when the skill can be used; \"effect\" says what it achieves and is checked afterwards.");
+        sb.AppendLine("- The effect must be progress: a guard calm, bribed or distracted, a door open, an item held, or the exit reached.");
         sb.AppendLine("- The name must be new: not an action above and not a skill already in the library.");
         sb.AppendLine("- Each call runs to completion before the next; conditions always look at the current situation.");
         sb.AppendLine();

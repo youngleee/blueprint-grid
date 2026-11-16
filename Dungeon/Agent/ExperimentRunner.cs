@@ -87,6 +87,10 @@ public static class ExperimentRunner
 
         var tierName = config.Tier.StartsWith("tier") ? config.Tier : $"tier{config.Tier}";
         var options = TierOptions(config.Tier);
+        // Never mix two runs in one directory: stale traces from an earlier run would be read as
+        // part of this one by replay and analysis.
+        if (Directory.Exists(config.OutputDir) && Directory.EnumerateFileSystemEntries(config.OutputDir).Any())
+            throw new ArgumentException($"output directory {config.OutputDir} is not empty; choose another --out or delete it");
         Directory.CreateDirectory(Path.Combine(config.OutputDir, "traces"));
         var csvPath = Path.Combine(config.OutputDir, "metrics.csv");
         await File.WriteAllTextAsync(csvPath, EpisodeResult.CsvHeader + "\n", ct);
@@ -127,6 +131,12 @@ public static class ExperimentRunner
             catch (LlmException e)
             {
                 aborted = $"seed {seed}: {e.Message}";
+                log?.Invoke($"ABORTED {aborted}");
+                break;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                aborted = $"seed {seed}: interrupted";
                 log?.Invoke($"ABORTED {aborted}");
                 break;
             }
@@ -187,7 +197,7 @@ public static class ExperimentRunner
             summary
         };
         await File.WriteAllTextAsync(Path.Combine(config.OutputDir, "run.json"),
-            JsonSerializer.Serialize(runInfo, new JsonSerializerOptions(EpisodeRunner.TraceJson) { WriteIndented = true }), ct);
+            JsonSerializer.Serialize(runInfo, new JsonSerializerOptions(EpisodeRunner.TraceJson) { WriteIndented = true }), CancellationToken.None);
         return summary;
     }
 

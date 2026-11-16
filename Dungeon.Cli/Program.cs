@@ -33,7 +33,7 @@ try
     }
     return 0;
 }
-catch (Exception e) when (e is ArgumentException or SkillFormatException or FileNotFoundException)
+catch (Exception e) when (e is ArgumentException or SkillFormatException or FileNotFoundException or DirectoryNotFoundException)
 {
     Console.Error.WriteLine($"error: {e.Message}");
     return 2;
@@ -150,10 +150,23 @@ async Task<int> Run()
     var inducer = induces && llm is not null
         ? new SkillInducer(llm, settings.Model, settings.Temperature, ExperimentRunner.FormFor(condition), admission: admission)
         : null;
+    // Ctrl-C / SIGINT / SIGTERM (also from `kill` or `timeout`): stop between decisions and still
+    // write run.json (aborted). A second signal is not intercepted and ends the process.
+    using var cts = new CancellationTokenSource();
+    void Stop(System.Runtime.InteropServices.PosixSignalContext c)
+    {
+        if (cts.IsCancellationRequested)
+            return;
+        c.Cancel = true;
+        cts.Cancel();
+        Console.Error.WriteLine($"\n{c.Signal}: stopping after the current step (send it again to kill)");
+    }
+    using var onInt = System.Runtime.InteropServices.PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGINT, Stop);
+    using var onTerm = System.Runtime.InteropServices.PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGTERM, Stop);
     var summary = await ExperimentRunner.RunAsync(new ExperimentConfig(condition, tier, seeds, maxDecisions, outDir,
         provider, settings.Model, settings.Temperature, mode, cacheDir, budget, LoadSkills(librarySource), librarySource,
         freeze, IntOption("--induce-attempts", 3), IntOption("--induce-calls", 6), Admission: admission),
-        decider, Console.WriteLine, inducer: inducer);
+        decider, Console.WriteLine, cts.Token, inducer);
 
     Console.WriteLine($"\nsuccess {summary.Successes}/{summary.Episodes} ({summary.SuccessRate:P0}), " +
                       $"mean decisions {summary.MeanDecisions:F1}, LLM calls {summary.LlmCalls} (cached {summary.CacheHits}), " +
@@ -232,7 +245,7 @@ IReadOnlyList<Skill> LoadSkills(string? source) => source switch
 {
     null or "" or "none" => [],
     "handwritten" => HandwrittenSkills.Load(),
-    _ => SkillJson.ParseLibrary(File.ReadAllText(source))
+    _ => SkillJson.LoadLibrary(File.ReadAllText(source), StandardActions.Create())
 };
 
 // .env is looked up in the working directory, then the repository root.

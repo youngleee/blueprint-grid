@@ -19,6 +19,7 @@ Update this table in the same commit as the work it describes.
 | 7 | Skill validator, scenario tester (calibrated), admission feedback, `skills --test`, `run --skills` | done |
 | 8 | `induce_skill` prompt, induction loop with feedback, conditions B / C / E, frozen held-out runs, usable-skills hint | done (offline with stub); live runs need API key |
 | 9 | Experiment protocol script, analysis script (tables, McNemar, curves), `docs/EXPERIMENTS.md` | done; full protocol dry-run with the stub |
+| — | Robustness audit (§14.1): 12 defects found by probing and fuzzing, all fixed with regression tests | done |
 | 10–12 | Live runs: calibrate, train, held-out test, variance (on the experiment machine) | next — needs API key |
 | 13–15 | Report from `results.md`, qualitative traces | — |
 
@@ -133,7 +134,9 @@ the project in the MARS ecosystem for the demo.
   (Bresenham); they are themselves visible. The agent keeps a memory of seen
   cells (fog of war).
 - Solvability is guaranteed by construction (see *Placement* below) and checked
-  by property tests over 1 000 seeds per tier.
+  by property tests over 1 000 seeds per tier. A seed whose layout has too few
+  chokepoints for its tier gets an alternative layout (streams `layout#1`,
+  `entity#1`, …); this affects 8 of 20 000 tier-3 seeds and no tier-1/2 seed.
 
 ### 5.4 Entities (MUST: Guard, Door; SHOULD: Trap)
 
@@ -899,7 +902,48 @@ reported as results.
 | Information leakage via verification | medium | medium | Verify in generated micro-rooms, never in a clone of the real episode |
 | MARS integration friction | medium | low | World core independent of MARS; MARS only hosts the replay demo (built in week 9, works) |
 
-## 15. Deliverables
+### 14.1 Robustness audit (week 9)
+
+Done by probing failure modes, not by reading code: hostile inputs, garbage
+model output, interrupted and concurrent runs, corrupt files, and every seed
+the protocol uses. Each finding has a regression test in
+`Dungeon.Tests/RobustnessTests.cs`.
+
+| # | Finding | Effect before the fix | Fix |
+|---|---|---|---|
+| 1 | `.env` inline comments (as in `.env.example`) were part of the value | provider `"openai   # openai \| stub …"` → *every* live run failed with "unknown provider" | `" #"` starts a comment in unquoted values; test parses the shipped `.env.example` |
+| 2 | A model refusal or empty output threw | one refusal aborted the whole run | refusal / empty / truncated output becomes the reply text; it costs one decision or one induction attempt |
+| 3 | 429 responses ignored `Retry-After` | retries could fire before the rate limit reset and exhaust attempts | wait = `Retry-After` if given, else exponential backoff; capped at 60 s; 6 attempts |
+| 4 | Corrupt cache entry (e.g. disk full) threw `JsonException` | run crashed; in record mode the entry could never be repaired | record / live: treated as a miss and rewritten; replay: clear error naming the file |
+| 5 | Cache temp file name was shared | two processes recording the same prompt crashed one another (3 of 4 in a test) | unique temp file per write, atomic rename |
+| 6 | Ctrl-C (SIGINT) and `kill` / `timeout` (SIGTERM) killed the process | no `run.json`, so the protocol could not tell the run was incomplete | first SIGINT or SIGTERM stops between decisions and writes `run.json` with `aborted_reason: interrupted` (exit 1) |
+| 7 | `--out` on a used directory mixed old and new traces | replay and analysis would read stale episodes as part of the run | non-empty output directory is an error; the protocol moves a failed attempt to `<name>.failed-<time>` and analysis ignores those |
+| 8 | Admission accepted skills with trivial effects (`state(g) == alert`, `dist(g) > 1`) | 7 of 11 random skills that passed tests had effects reached by doing nothing useful; they would sit in the library as "learned" | effects must claim progress: guard calm/bribed/distracted, door open, item held, or exit reached |
+| 9 | A library file whose skill is named like a built-in action (or calls an unknown one) | uncaught exception at startup | `SkillJson.LoadLibrary` checks names and calls on load with a clear message |
+| 10 | Protocol: a failing run printed its last lines and continued | later phases ran on missing libraries | each run's full output goes to `$OUT/logs/<run>.log`; a non-zero exit stops the phase; a missing `--skills` input is reported by name |
+| 11 | 8 of 20 000 tier-3 seeds (first: 1936) threw "only 2/3 chokepoints" | any run over such a seed crashed (found by running 5 000 seeds) | the seed gets an alternative layout from stream `layout#1`, `#2`, …; seeds that generated before are unchanged (pinned by a test); 0 of 20 000 fail per tier |
+| 12 | `run_protocol.sh` depended on the working directory | started from elsewhere, every path was wrong | the script changes to the repository root itself |
+
+**Checked and found robust:**
+- Fuzzing: 1 000 episodes of random model replies (bad JSON, wrong types,
+  unknown actions and ids, nested objects) never crashed; 1 000 more are
+  part of the suite (300 per run).
+- 600 random type-correct skills through validation and 5 080 scenario test
+  rooms never crashed; slowest admission 36 ms.
+- Argument extremes (`go_to(x, 100000)`, negative distances, `int.MaxValue`
+  coordinates) return `invalid` or `unreachable` in < 5 ms.
+- Skill parser and condition parser on deep nesting (JSON depth limit
+  enforced), huge numbers, empty input.
+- All 150 seeds the protocol uses generate, and so do 20 000 per tier.
+- Headline numbers unchanged by every fix: R 175/200 and RD 191/200 on tier
+  3; the stub dry run (25 runs) replays without a single mismatch.
+- An interrupted protocol resumes: finished runs are skipped, the
+  interrupted one is redone, the cache makes repeated prompts free.
+
+**Remaining known limits (not fixed, stated here):** a second Ctrl-C kills
+the process without `run.json` (by design); the stub's results depend on
+prompt wording, so they are pipeline checks only; scenario rooms contain one
+entity each (§14 risk table).
 
 1. Source code (this repository), tagged release.
 2. `skills.json` libraries from the final runs + full LLM cache (replayable).

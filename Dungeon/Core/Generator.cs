@@ -13,10 +13,12 @@ public sealed record GeneratorOptions(
 // Seeded room-and-corridor generator. Entities are placed in a later step (week 3).
 public static class Generator
 {
-    public static DungeonMap Generate(int seed, GeneratorOptions? options = null)
+    // `variant` > 0 draws an alternative layout for the same seed from the stream "layout#<variant>";
+    // variant 0 is the original stream, so existing seeds are unchanged.
+    public static DungeonMap Generate(int seed, GeneratorOptions? options = null, int variant = 0)
     {
         var o = options ?? new GeneratorOptions();
-        var rng = Rng.ForStream(seed, "layout");
+        var rng = Rng.ForStream(seed, variant == 0 ? "layout" : $"layout#{variant}");
         var tiles = new Tile[o.Width, o.Height];
         var target = rng.Next(o.MinRooms, o.MaxRooms + 1);
         var rooms = new List<Room>();

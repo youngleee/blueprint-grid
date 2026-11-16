@@ -18,7 +18,8 @@ public sealed record LlmSettings(string Provider, string? ApiKey, string Model, 
             CacheDir: Get("DUNGEON_LLM_CACHE") ?? "cache/llm");
     }
 
-    // KEY=VALUE lines; '#' comments; optional surrounding quotes.
+    // KEY=VALUE lines; '#' comment lines; for unquoted values, " #" starts an inline comment (as in
+    // .env.example); optional surrounding quotes keep '#' literal.
     public static Dictionary<string, string> ParseEnvFile(IEnumerable<string> lines)
     {
         var result = new Dictionary<string, string>();
@@ -31,8 +32,18 @@ public sealed record LlmSettings(string Provider, string? ApiKey, string Model, 
             if (eq <= 0)
                 continue;
             var value = line[(eq + 1)..].Trim();
-            if (value.Length >= 2 && (value[0] == '"' && value[^1] == '"' || value[0] == '\'' && value[^1] == '\''))
-                value = value[1..^1];
+            if (value.Length >= 2 && (value[0] == '"' || value[0] == '\'') && value.IndexOf(value[0], 1) is var close and > 0)
+            {
+                value = value[1..close];
+            }
+            else
+            {
+                var hash = value.IndexOf(" #", StringComparison.Ordinal);
+                if (hash >= 0)
+                    value = value[..hash].TrimEnd();
+                if (value.StartsWith('#'))
+                    value = "";
+            }
             result[line[..eq].Trim()] = value;
         }
         return result;

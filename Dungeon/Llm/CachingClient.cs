@@ -55,9 +55,13 @@ public sealed class CachingClient : ILlmClient
 
         if (Mode != CacheMode.Live && File.Exists(path))
         {
-            var entry = JsonSerializer.Deserialize<CacheEntry>(await File.ReadAllTextAsync(path, ct))
-                        ?? throw new LlmException($"corrupt cache entry {path}");
-            return entry.Response with { FromCache = true, CacheKey = key };
+            var entry = TryRead(path);
+            if (entry is not null)
+                return entry.Response with { FromCache = true, CacheKey = key };
+            // A damaged entry (e.g. disk full) is a miss in record mode: the call is made again and
+            // the entry rewritten. In replay mode it cannot be recovered, so say exactly which file.
+            if (Mode == CacheMode.Replay)
+                throw new LlmException($"corrupt cache entry {path}; delete it and re-record, or restore the cache archive");
         }
 
         if (Mode == CacheMode.Replay)
@@ -66,10 +70,24 @@ public sealed class CachingClient : ILlmClient
 
         var response = await _inner!.CompleteAsync(request, ct);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var tmp = path + ".tmp";
+        // Unique temp name per write, then an atomic rename: several processes may record the same
+        // prompt at once (parallel protocol phases); the last complete write wins, none is torn.
+        var tmp = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
         await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(new CacheEntry(request, response with { FromCache = false }, DateTime.UtcNow), Json), ct);
         File.Move(tmp, path, overwrite: true);
         return response with { CacheKey = key };
+    }
+
+    private static CacheEntry? TryRead(string path)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<CacheEntry>(File.ReadAllText(path));
+        }
+        catch (Exception e) when (e is JsonException or IOException)
+        {
+            return null;
+        }
     }
 
     public sealed record CacheEntry(LlmRequest Request, LlmResponse Response, DateTime RecordedUtc);

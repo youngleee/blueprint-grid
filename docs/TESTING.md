@@ -119,7 +119,7 @@ dotnet run --project Dungeon.Cli -- run --condition A|R [options]
 | `--llm` | `record` | `record` (cache, call on miss) · `replay` (cache only, offline) · `live` (always call) |
 | `--provider` | from `.env`, else `openai` | `openai` · `stub` (offline, pipeline checks only) |
 | `--max-calls`, `--max-tokens` | `2000`, `3000000` | hard caps on real API usage per run |
-| `--out` | `runs/<time>_<cond>_tier<N>` | output directory |
+| `--out` | `runs/<time>_<cond>_tier<N>` | output directory; must not exist or be empty |
 | `--env` | `./.env` (or parent dirs) | settings file |
 | `--skills` | D / RD: `handwritten`; C / E: `none` | D, RD: fixed library file instead of the built-in one. C, E: starting library (e.g. a previous run's `library.json`) |
 | `--freeze` | off | B / C / E: no induction, library unchanged (held-out evaluation) |
@@ -160,4 +160,7 @@ Output directory:
 | R14 | Traces are complete | `replay --run runs/stubC --check` | every seed `matches trace`; edit an action in a trace and it reports `MISMATCH` |
 | R15 | Watch a learned skill | `replay --run runs/stubC --seed 2 --delay 300` | map per decision; `[learned skill …]` at the decision where it was admitted |
 | R16 | MARS replay | `python Visualization/main.py dungeon`, then `dotnet run --project Dungeon.Mars -- --run runs/stubC --seed 2` | window shows the map filling in decision by decision; terminal prints each decision and `[learned …]` |
+| R17 | Ctrl-C | start R9, press Ctrl-C once | `interrupt: stopping after the current step`; `run.json` has `aborted_reason: … interrupted`; exit code 1 |
+| R18 | Used output directory | rerun R9 with the same `--out` | `error: output directory … is not empty`, exit code 2 |
+| R19 | Clashing library | `--skills` file with a skill named `explore` | `error: skills[0] 'explore': name is already an action`, exit code 2 |
 | R13 | First live induction | `.env` with key, `run --condition C --tier 1 --seeds 1-5 --max-calls 300` | `induction.jsonl`: real model replies, feedback rounds; check whether any skill is accepted and what it looks like (`skills --test --file <out>/library.json`) |

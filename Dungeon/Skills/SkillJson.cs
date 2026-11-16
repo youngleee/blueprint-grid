@@ -62,6 +62,35 @@ public static partial class SkillJson
         }
     }
 
+    // A library file is untrusted input (written by the agent or edited by hand). Beyond its shape,
+    // every skill must be loadable into the standard action set in order: no name clash with a
+    // built-in action and only calls to actions defined earlier. Fails with the first problem.
+    public static List<Skill> LoadLibrary(string json, Agent.ActionSpace baseSpace)
+    {
+        var skills = ParseLibrary(json);
+        var space = baseSpace.Clone();
+        for (var i = 0; i < skills.Count; i++)
+        {
+            var s = skills[i];
+            if (space.Get(s.Name) is not null)
+                throw new SkillFormatException($"skills[{i}] '{s.Name}': name is already an action");
+            var unknown = Calls(s.Body).FirstOrDefault(c => c != s.Name && space.Get(c) is null);
+            if (unknown is not null)
+                throw new SkillFormatException($"skills[{i}] '{s.Name}': calls unknown action '{unknown}'");
+            space.Register(SkillActions.ToAction(s));
+        }
+        return skills;
+    }
+
+    private static IEnumerable<string> Calls(IEnumerable<SkillStmt> block) => block.SelectMany(s => s switch
+    {
+        CallStmt c => [c.Action],
+        IfStmt f => Calls(f.Then).Concat(Calls(f.Else)),
+        UntilStmt u => Calls(u.Body),
+        RepeatStmt r => Calls(r.Body),
+        _ => []
+    });
+
     public static List<Skill> ParseLibrary(string json)
     {
         JsonNode? node;
