@@ -30,6 +30,9 @@ dotnet run --project Dungeon.Cli -- play --seed 1 --tier 3 [--sight 3] [--skills
 # Show a skill library: signatures, what the LLM is told, and the JSON
 dotnet run --project Dungeon.Cli -- skills [--file FILE]
 
+# Re-execute a recorded episode from its trace (no LLM); --check only verifies outcomes match
+dotnet run --project Dungeon.Cli -- replay --run DIR [--seed N] [--delay MS] [--reveal] [--check]
+
 # Validate and scenario-test every skill in a library (20 generated rooms each)
 dotnet run --project Dungeon.Cli -- skills --test [--file FILE] [--macro]
 
@@ -154,4 +157,6 @@ Output directory:
 | R10 | B resets, C keeps | same with `--condition B` | similar success but ~40 skills induced and `final library 0` |
 | R11 | Frozen held-out | `run --condition C --freeze --skills runs/stubC/library.json --provider stub --seeds 101-120` | 0 induction calls, library size 2 in every row |
 | R12 | Macro ablation | `run --condition E --provider stub --seeds 1-20`, then with `--admission valid` | `tested`: 0 macros admitted (they fail the room tests); `valid`: some admitted |
+| R14 | Traces are complete | `replay --run runs/stubC --check` | every seed `matches trace`; edit an action in a trace and it reports `MISMATCH` |
+| R15 | Watch a learned skill | `replay --run runs/stubC --seed 2 --delay 300` | map per decision; `[learned skill …]` at the decision where it was admitted |
 | R13 | First live induction | `.env` with key, `run --condition C --tier 1 --seeds 1-5 --max-calls 300` | `induction.jsonl`: real model replies, feedback rounds; check whether any skill is accepted and what it looks like (`skills --test --file <out>/library.json`) |

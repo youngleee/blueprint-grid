@@ -376,3 +376,49 @@ public class InductionConditionTests : IDisposable
         Assert.Equal(Rows(rec.OutputDir), Rows(rep.OutputDir));
     }
 }
+
+public class EpisodeReplayTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "dungeon-replay-ep-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir))
+            Directory.Delete(_dir, recursive: true);
+    }
+
+    [Theory]
+    [InlineData("RD")]
+    [InlineData("C")]
+    public async Task Recorded_episodes_replay_exactly_from_their_traces(string condition)
+    {
+        var config = new ExperimentConfig(condition, "3", [1, 2, 3, 4], 40, Path.Combine(_dir, condition), "stub", "stub-model", 0,
+            CacheMode.Record, Path.Combine(_dir, "cache"), new LlmBudget(),
+            condition == "RD" ? null : [], condition == "RD" ? "handwritten" : "none");
+        var client = new StubLlmClient();
+        IDecider decider = condition == "RD" ? new RuleBasedDecider() : new LlmDecider(client, "stub-model", 0);
+        await ExperimentRunner.RunAsync(config, decider,
+            inducer: condition == "C" ? new SkillInducer(client, "stub-model", 0, SkillForm.ClosedLoop) : null);
+
+        foreach (var seed in config.Seeds)
+        {
+            var r = EpisodeReplay.Replay(config.OutputDir, seed);
+            Assert.True(r.MatchesTrace, r.Mismatch);
+            var row = File.ReadLines(Path.Combine(config.OutputDir, "metrics.csv")).First(l => l.Split(',')[2] == seed.ToString()).Split(',');
+            Assert.Equal(row[6], r.Ticks.ToString());
+        }
+    }
+
+    [Fact]
+    public async Task Edited_trace_is_detected()
+    {
+        var config = new ExperimentConfig("RD", "3", [1], 40, Path.Combine(_dir, "edit"), "none", "-", 0,
+            CacheMode.Record, Path.Combine(_dir, "cache"), new LlmBudget());
+        await ExperimentRunner.RunAsync(config, new RuleBasedDecider());
+        var path = Path.Combine(config.OutputDir, "traces", "seed_1.jsonl");
+        var lines = File.ReadAllLines(path);
+        lines[0] = lines[0].Replace("\"action\":\"explore\"", "\"action\":\"wait\"");
+        File.WriteAllLines(path, lines);
+        Assert.False(EpisodeReplay.Replay(config.OutputDir, 1).MatchesTrace);
+    }
+}

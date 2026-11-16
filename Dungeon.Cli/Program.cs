@@ -13,6 +13,7 @@ using Dungeon.Skills;
 //                                              [--max-calls N] [--max-tokens N] [--env FILE] [--skills FILE]
 //                                              [--freeze] [--induce-attempts N] [--induce-calls N]
 //                                              [--admission tested|valid]   (B, C, E)
+//   dotnet run --project Dungeon.Cli -- replay --run DIR --seed N [--delay MS] [--reveal] [--check]
 //   echo "e\ne\nstate" | dotnet run --project Dungeon.Cli -- play --seed 1   (scripted)
 
 var command = args.FirstOrDefault() ?? "help";
@@ -25,8 +26,9 @@ try
         case "play": Play(); break;
         case "run": return await Run();
         case "skills": PrintSkills(); break;
+        case "replay": return Replay();
         default:
-            Console.WriteLine("commands: play | render | run | skills   (see docs/TESTING.md)");
+            Console.WriteLine("commands: play | render | run | skills | replay   (see docs/TESTING.md)");
             break;
     }
     return 0;
@@ -163,6 +165,39 @@ async Task<int> Run()
         return 1;
     }
     return 0;
+}
+
+// Shows a recorded episode decision by decision (the agent's view unless --reveal), or with
+// --check only verifies that re-executing the trace reproduces every recorded outcome.
+int Replay()
+{
+    var dir = Option("--run") ?? throw new ArgumentException("--run DIR is required (a run output directory)");
+    var seeds = Option("--seed") is { } one ? [int.Parse(one)] :
+        Directory.GetFiles(Path.Combine(dir, "traces"), "seed_*.jsonl")
+            .Select(f => int.Parse(Path.GetFileNameWithoutExtension(f)["seed_".Length..])).Order().ToList();
+    var check = args.Contains("--check");
+    var reveal = args.Contains("--reveal");
+    var delay = IntOption("--delay", 0);
+    var failed = 0;
+    foreach (var seed in seeds)
+    {
+        var r = EpisodeReplay.Replay(dir, seed);
+        if (!check)
+            foreach (var f in r.Frames)
+            {
+                Console.WriteLine($"--- decision {f.Decision}, tick {f.World.Tick}" + (f.Learned is null ? "" : $"  [learned skill {f.Learned}]"));
+                Console.WriteLine($"{f.Action}: {f.Reason}");
+                Console.WriteLine(f.Outcome);
+                Console.WriteLine(AsciiRenderer.Render(f.World, reveal));
+                if (delay > 0)
+                    Thread.Sleep(delay);
+            }
+        Console.WriteLine($"seed {seed}: {r.Status.ToString().ToLowerInvariant()} after {r.Frames.Count} decisions, {r.Ticks} ticks — " +
+                          (r.MatchesTrace ? "matches trace" : $"MISMATCH {r.Mismatch}"));
+        if (!r.MatchesTrace)
+            failed++;
+    }
+    return failed == 0 ? 0 : 1;
 }
 
 void PrintSkills()

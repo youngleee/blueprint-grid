@@ -590,6 +590,11 @@ arguments are then validated by `ActionSpace`.
   `replay` (read only, fail on miss).
 - A seeded run in `replay` mode is bit-for-bit reproducible without network
   (tested: metrics rows identical except the cache-hit column).
+- **Trace replay** (`EpisodeReplay`, CLI `replay`, protocol phase `verify`)
+  is a second, LLM-free check: it re-executes every recorded decision (and
+  registers learned skills when they were admitted) from the trace alone and
+  requires each outcome to match. The full stub dry run (27 runs, 165
+  episodes) replays exactly; an edited trace is detected.
   Live variance is measured separately (§9.5).
 
 ### 8.4 Cost control
@@ -790,6 +795,7 @@ Dungeon/                  class library, no MARS dependency
   Skills/InducePrompts.cs ✓ induce_skill prompt (skill and macro variants)
   Skills/SkillInducer.cs  ✓ induction with feedback rounds, InductionPolicy (triggers, caps)
   Agent/UsableSkills.cs   ✓ "skills usable now" hint
+  Agent/EpisodeReplay.cs  ✓ re-execute an episode from its trace (verification, demo)
   Llm/JsonText.cs         ✓ code-fence stripping
   Skills/Library.cs       registry + persistence
 Dungeon.Cli/              ✓ play / render / run / skills
@@ -836,6 +842,7 @@ visualization skeleton, the "LLM proposes, code decides" validator principle.
 | Admission | invalid skills not tested; feedback lists errors or all 20 rooms | unit |
 | Induction | prompt examples valid and solution-free; no hidden parameters over 30 seeds; feedback rounds carry all earlier attempts; give-up; macro form; valid-only admission; triggers, per-obstacle and per-episode caps, stall | unit |
 | B / C / E | C library persists and only grows; B resets; frozen library used on held-out seeds with 0 induction; replayed induction run reproduces library and metrics | integration |
+| Trace replay | RD and C traces re-execute to identical outcomes and ticks; edited trace detected | integration |
 
 No test touches the network. The LLM path is exercised with scripted clients
 (fixed replies), the stub provider and a stubbed HTTP handler; these are never

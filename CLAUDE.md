@@ -34,7 +34,7 @@ before changing behaviour.
     (micro-room tests) and `SkillAdmission` (both + feedback text),
     `InducePrompts` (induce_skill prompt), `SkillInducer` + `InductionPolicy`
     (when to induce, feedback rounds, caps, registration).
-- `Dungeon.Cli/`: `play`, `render`, `run`, `skills`.
+- `Dungeon.Cli/`: `play`, `render`, `run`, `skills`, `replay`.
 - `Dungeon.Tests/`: xUnit. `LlmFakes.cs` has the scripted client and HTTP stub.
   `Fixtures/calm_guard_v1|v2|v3|blind.json` are skill drafts with known
   full-episode quality; they calibrate the scenario tester (PLAN §6.4).
@@ -88,6 +88,10 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
   calibration in PLAN §6.4; `ScenarioTesterTests` pins the counts. Changing
   the tester, the room generator or the defaults means re-running that
   calibration and updating §6.4.
+- **Traces must be complete.** `EpisodeReplay` re-executes an episode from
+  its trace alone. Anything that affects an episode must be recoverable from
+  `run.json`, the traces and `induction.jsonl`; a change that breaks
+  `replay --check` on fresh runs is a bug.
 - **Induction never executes model output.** A reply becomes a `Skill` only
   through `SkillJson`, and joins `A_t` only after `SkillAdmission` accepts it.
   Prompt changes change cache keys (see above).

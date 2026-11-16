@@ -36,7 +36,7 @@ The report starts with a "Stub provider" warning; the numbers are pipeline check
 scripts/run_protocol.sh check
 scripts/run_protocol.sh calibrate       # A, R, RD with D_CAL=80 on CAL_SEEDS
 python3 scripts/analyze.py runs/protocol   # read "Calibration", choose D_MAX
-D_MAX=<value> scripts/run_protocol.sh train test variance analyze
+D_MAX=<value> scripts/run_protocol.sh train test variance verify analyze
 ```
 
 | Phase | Runs | What it answers |
@@ -45,6 +45,7 @@ D_MAX=<value> scripts/run_protocol.sh train test variance analyze
 | `train` | `train_<C,E,C_valid,E_valid>_t1..t3` | curriculum tier 1 → 2 → 3, each phase starting from the previous `library.json` |
 | `test` | `test_R, RD, A, D, B, C_frozen, C_induce, E_frozen, C_valid_frozen, E_valid_frozen` | held-out tier-3 seeds 1001–1050 at D_MAX |
 | `variance` | `var_C_frozen_1..3` | live repeats of frozen C with fresh caches |
+| `verify` | `replay_check.txt` per run | every episode re-executed from its trace without the LLM must reproduce each recorded outcome |
 | `analyze` | `runs/protocol/results.md` | all tables below |
 
 Seed sets are disjoint: training 1–60, held-out 1001–1050, calibration 2001–2030. Every run writes
@@ -105,6 +106,12 @@ dotnet run --project Dungeon.Cli -- skills --test --file runs/protocol/train_C_t
 ```
 
 and read a few `induction.jsonl` lines to see how the model responded to admission feedback.
+Watch an episode step by step, with skills appearing when they were learned:
+
+```bash
+dotnet run --project Dungeon.Cli -- replay --run runs/protocol/test_C_frozen --seed 1001 --delay 300
+```
+
 These are the qualitative trace of PLAN §9.6.
 
 ## 6. What to bring back

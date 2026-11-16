@@ -9,8 +9,9 @@
 #   train        curriculum for C, E and C/E-valid: tier 1 -> 2 -> 3, library carried between phases
 #   test         held-out tier-3 evaluation of every condition at D_MAX
 #   variance     repeat frozen C on the held-out seeds with fresh caches (live variance)
+#   verify       re-execute every recorded episode from its trace (no LLM) and check it matches
 #   analyze      write $OUT/results.md from everything above
-#   all          check calibrate train test analyze
+#   all          check calibrate train test verify analyze
 #
 # Environment (all optional):
 #   PROVIDER=openai|stub   stub = offline dry run of the whole protocol, no key, no cost (default openai)
@@ -139,6 +140,21 @@ phase_variance() {
   done
 }
 
+phase_verify() {
+  log "verify (replay every trace, no LLM)"
+  build
+  local bad=0
+  for dir in "$OUT"/*/; do
+    [[ -f "$dir/run.json" && -d "$dir/traces" ]] || continue
+    if ! cli replay --run "$dir" --check > "$dir/replay_check.txt"; then
+      echo "MISMATCH in $dir (see replay_check.txt)"; bad=1
+    else
+      echo "ok   $(basename "$dir") ($(grep -c 'matches trace' "$dir/replay_check.txt") episodes)"
+    fi
+  done
+  return $bad
+}
+
 phase_analyze() {
   log "analyze"
   python3 scripts/analyze.py "$OUT" --out "$OUT/results.md"
@@ -153,8 +169,9 @@ for phase in "$@"; do
     train) phase_train ;;
     test) phase_test ;;
     variance) phase_variance ;;
+    verify) phase_verify ;;
     analyze) phase_analyze ;;
-    all) phase_check; phase_calibrate; phase_train; phase_test; phase_analyze ;;
+    all) phase_check; phase_calibrate; phase_train; phase_test; phase_verify; phase_analyze ;;
     *) echo "unknown phase '$phase'" >&2; exit 1 ;;
   esac
 done
