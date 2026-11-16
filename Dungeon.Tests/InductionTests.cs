@@ -417,7 +417,11 @@ public class EpisodeReplayTests : IDisposable
         await ExperimentRunner.RunAsync(config, new RuleBasedDecider());
         var path = Path.Combine(config.OutputDir, "traces", "seed_1.jsonl");
         var lines = File.ReadAllLines(path);
-        lines[0] = lines[0].Replace("\"action\":\"explore\"", "\"action\":\"wait\"");
+        // Replace the first decision's action with `wait`, whatever it was.
+        var edited = System.Text.RegularExpressions.Regex.Replace(lines[0], "\"action\":\"[a-z_]+\",\"args\":\\[[^\\]]*\\]",
+            "\"action\":\"wait\",\"args\":[]");
+        Assert.NotEqual(lines[0], edited);
+        lines[0] = edited;
         File.WriteAllLines(path, lines);
         Assert.False(EpisodeReplay.Replay(config.OutputDir, 1).MatchesTrace);
     }

@@ -12,7 +12,7 @@ git clone https://github.com/youngleee/blueprint-grid && cd blueprint-grid
 dotnet --version                 # 10.x
 python3 --version                # 3.8+ (analysis script, standard library only)
 cp .env.example .env             # then set OPENAI_API_KEY=... in .env
-scripts/run_protocol.sh check    # build, 359 tests, skill admission, key present
+scripts/run_protocol.sh check    # build, all tests, skill admission, key present
 ```
 
 `check` must print `Passed!`, two `accepted` skills and `OPENAI_API_KEY found`.
