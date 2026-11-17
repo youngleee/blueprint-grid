@@ -39,6 +39,10 @@ the live runs — see [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md).
 
 ## Build and test
 
+Every push runs `.github/workflows/ci.yml`: build, all tests, analysis-script
+tests, skill-library admission, and a stub dry run of the whole protocol with
+trace verification (no API key, no cost).
+
 ```bash
 dotnet build GridBlueprint.sln
 dotnet test Dungeon.Tests

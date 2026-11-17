@@ -15,7 +15,8 @@ cp .env.example .env             # then set OPENAI_API_KEY=... in .env
 scripts/run_protocol.sh check    # build, all tests, skill admission, key present
 ```
 
-`check` must print `Passed!`, two `accepted` skills and `OPENAI_API_KEY found`.
+`check` must print `Passed!`, two `accepted` skills and `OPENAI_API_KEY found`. Before pulling
+a new version onto the experiment machine, check that the commit's CI run on GitHub is green.
 
 ## 2. Dry run (no key, no cost, ~5 min)
 

@@ -20,6 +20,7 @@ Update this table in the same commit as the work it describes.
 | 8 | `induce_skill` prompt, induction loop with feedback, conditions B / C / E, frozen held-out runs, usable-skills hint | done (offline with stub); live runs need API key |
 | 9 | Experiment protocol script, analysis script (tables, McNemar, curves), `docs/EXPERIMENTS.md` | done; full protocol dry-run with the stub |
 | — | Robustness audit (§14.1): 12 defects found by probing and fuzzing, all fixed with regression tests | done |
+| — | CI on every push: build, tests, admission, stub protocol dry run + trace verification | done |
 | 10–12 | Live runs: calibrate, train, held-out test, variance (on the experiment machine) | next — needs API key |
 | 13–15 | Report from `results.md`, qualitative traces | — |
 

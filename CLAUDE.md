@@ -123,7 +123,9 @@ Options and output layout: `docs/TESTING.md` → *Experiment runs*.
 ## Editing rules
 
 - Small commits, `GP-### type(scope): imperative description`.
-- Build and run `dotnet test Dungeon.Tests` after C# changes.
+- Build and run `dotnet test Dungeon.Tests` after C# changes. CI
+  (`.github/workflows/ci.yml`) repeats that plus `scripts/test_analyze.py`,
+  `skills --test` and a stub protocol dry run with `verify`; keep it green.
 - **No stale docs:** update `docs/PLAN.md` (status table and any changed
   specification), `docs/TESTING.md`, `README.md` and this file in the same
   commit as the code change they describe.

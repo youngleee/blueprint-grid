@@ -1,0 +1,52 @@
+# Runs on every push and pull request. No API key, no network calls to OpenAI: the test suite is
+# offline by design, and the protocol dry run uses the stub provider.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: dotnet build GridBlueprint.sln -c Release
+
+      - name: Unit and integration tests
+        run: dotnet test Dungeon.Tests -c Release --no-build
+
+      - name: Analysis script tests
+        run: python3 scripts/test_analyze.py
+
+      - name: Skill library admission
+        run: dotnet Dungeon.Cli/bin/Release/net10.0/Dungeon.Cli.dll skills --test | tee admission.txt && ! grep -q rejected admission.txt
+
+      - name: Protocol dry run (stub provider, small seed sets) with trace verification
+        run: |
+          PROVIDER=stub OUT=runs/ci TRAIN1=1-3 TRAIN2=4-6 TRAIN3=7-9 HELDOUT=1001-1005 CAL_SEEDS=2001-2005 \
+            scripts/run_protocol.sh calibrate train test verify analyze
+
+      - name: Keep the dry-run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run
+          path: |
+            runs/ci/results.md
+            runs/ci/logs/
+          if-no-files-found: ignore
