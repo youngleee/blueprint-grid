@@ -159,7 +159,7 @@ public class RobustnessTests : IDisposable
     public void Seeds_whose_first_layout_is_too_short_get_an_alternative_layout()
     {
         var s = ScenarioGenerator.Generate(1936, ScenarioOptions.Tier3);
-        Assert.Equal(1, s.Guards.Count);
+        Assert.Single(s.Guards);
         Assert.Equal(2, s.Doors.Count);
         foreach (var seed in new[] { 4088, 5870, 6186, 11826 })
             ScenarioGenerator.Generate(seed, ScenarioOptions.Tier3);
